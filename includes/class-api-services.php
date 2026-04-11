@@ -15,7 +15,7 @@ class QualityLife_API_Services {
         $product_info_row = $wpdb->get_row($wpdb->prepare("SELECT product_info FROM {$table_name} WHERE barcode = %s", $barcode));
         $product_info = $product_info_row ? $product_info_row->product_info : "Genel kurallara göre nazikçe yanıtla.";
 
-       $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={$api_key}";
+       $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={$api_key}";
         $prompt = "Ürün Özellikleri: {$product_info}\n\nMüşteri Sorusu: {$question_text}\n\nE-ticaret formatında net bir cevap üret.";
 
         $body = [
@@ -40,11 +40,11 @@ class QualityLife_API_Services {
         $api_key = get_option('ql_gemini_api_key', '');
         if(empty($api_key)) return ['error' => 'API Anahtarı eksik.'];
 
-       $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key={$api_key}";
-        $body = [
-            "model" => "models/gemini-embedding-001",
-            "content" => [ "parts" => [ ["text" => $text] ] ]
-        ];
+     $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key={$api_key}";
+$body = [
+    "model" => "models/gemini-embedding-001",
+    "content" => [ "parts" => [ ["text" => $text] ] ]
+];
 
         $response = wp_remote_post($url, [
             'headers' => ['Content-Type' => 'application/json'],
@@ -60,6 +60,41 @@ class QualityLife_API_Services {
         // Google'dan dönen gerçek hatayı yakala
         if (isset($data['error'])) return ['error' => 'Google API: ' . $data['error']['message']];
         if (isset($data['embedding']['values'])) return ['values' => $data['embedding']['values']];
+
+        return ['error' => 'Bilinmeyen API Yanıtı.'];
+    }
+
+    // YENİ: Toplu (Batch) Vektör Oluşturma - Kotayı 20 kat rahatlatır
+    public static function get_batch_text_embeddings($texts) {
+        $api_key = get_option('ql_gemini_api_key', '');
+        if(empty($api_key)) return ['error' => 'API Anahtarı eksik.'];
+
+        // Batch işlemi için özel uç nokta (endpoint)
+        $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:batchEmbedContents?key={$api_key}";
+
+        $requests = [];
+        foreach($texts as $text) {
+            $requests[] = [
+                "model" => "models/gemini-embedding-001",
+                "content" => [ "parts" => [ ["text" => $text] ] ]
+            ];
+        }
+
+        $body = [ "requests" => $requests ];
+
+        $response = wp_remote_post($url, [
+            'headers' => ['Content-Type' => 'application/json'],
+            'body'    => wp_json_encode($body),
+           'timeout' => 60 // 100 soruluk dev işlem için süreyi maksimize ettik
+        ]);
+
+        if (is_wp_error($response)) return ['error' => 'Sunucu hatası: ' . $response->get_error_message()];
+        
+        $body_str = wp_remote_retrieve_body($response);
+        $data = json_decode($body_str, true);
+
+        if (isset($data['error'])) return ['error' => 'Google API: ' . $data['error']['message']];
+        if (isset($data['embeddings'])) return ['embeddings' => $data['embeddings']];
 
         return ['error' => 'Bilinmeyen API Yanıtı.'];
     }
@@ -171,7 +206,7 @@ class QualityLife_API_Services {
         $prompt .= "--- YENİ MÜŞTERİ SORUSU ---\n$question_text\n\nCEVAP:";
 
        // G. Sonucu Gemini'den İste
-        $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={$api_key}";
+      $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={$api_key}";
         $body = [
             "system_instruction" => [ "parts" => [["text" => $global_prompt]] ],
             "contents" => [ ["parts" => [["text" => $prompt]]] ],

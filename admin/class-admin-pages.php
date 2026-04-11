@@ -366,9 +366,19 @@ class QualityLife_Admin_Pages {
                     const data = await res.json();
 
                    if(!data.success) { 
-                        status.innerHTML = '❌ ' + (data.data && data.data.message ? data.data.message : 'Sistem Hatası.'); 
-                        break; 
-                    }
+    const errorMsg = data.data && data.data.message ? data.data.message : 'Sistem Hatası.';
+    
+    // Eğer Google "Kota Doldu" veya "Çok Hızlısın" derse sistemi durdurma, 60 saniye uyut!
+    if(errorMsg.includes('Quota') || errorMsg.includes('quota') || errorMsg.includes('exceeded')) {
+        status.innerHTML = '⏳ Google API nefes alıyor... Ücretsiz kota limiti sebebiyle 60 saniye bekleniyor. Lütfen sekmeyi kapatmayın.';
+        await new Promise(r => setTimeout(r, 62000)); // Güvence için 62 saniye bekle
+        continue; // Döngüyü kırma, çalışmaya kaldığı yerden devam et!
+    } else {
+        // Kota dışındaki gerçek bir hataysa durdur.
+        status.innerHTML = '❌ ' + errorMsg; 
+        break; 
+    }
+}
                     
                     if(data.data.done) {
                         status.innerHTML = '✅ Bitti! Tüm arşiv yapay zeka beynine yazıldı.';
@@ -376,7 +386,8 @@ class QualityLife_Admin_Pages {
                     }
 
                     status.innerHTML = `⚙️ İşleniyor... Kalan Soru: ${data.data.remaining}`;
-                    await new Promise(r => setTimeout(r, 1000)); // Google'ı yormamak için mola
+                    // ÖNEMLİ: 1 saniye yerine 5 saniye bekle. (Dakikada maks 12 istek = Limitsiz kullanım)
+                    await new Promise(r => setTimeout(r, 5000));
                 } catch(e) {
                     status.innerHTML = '❌ Bağlantı koptu. Tekrar butona basın.';
                     break;

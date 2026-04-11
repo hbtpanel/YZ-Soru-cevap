@@ -124,38 +124,45 @@ class QualityLife_AJAX_Handlers {
         global $wpdb;
         $table = $wpdb->prefix . 'ql_all_questions';
 
-        // Aşırı yüklenmeyi önlemek için limiti 5'e düşürdük
-        $unprocessed = $wpdb->get_results("SELECT id, question_text, answer_text FROM $table WHERE vector_data IS NULL LIMIT 5");
+        // Artık tek seferde 20 soru işliyoruz!
+     $unprocessed = $wpdb->get_results("SELECT id, question_text, answer_text FROM $table WHERE vector_data IS NULL LIMIT 100");
 
         if (empty($unprocessed)) {
             wp_send_json_success(['done' => true, 'message' => 'Tüm arşiv başarıyla indekslendi!']);
         }
 
-        $processed_count = 0;
+        $texts_to_embed = [];
+        $ids = [];
         foreach ($unprocessed as $row) {
-            $combined_text = "Soru: " . $row->question_text . " Cevap: " . $row->answer_text;
-            
-            $result = QualityLife_API_Services::get_text_embedding($combined_text);
-            
-            if (isset($result['values'])) {
-                $wpdb->update(
-                    $table,
-                    ['vector_data' => wp_json_encode($result['values'])],
-                    ['id' => $row->id]
-                );
-                $processed_count++;
-            } else {
-                // HATA ALIRSAK DÖNGÜYÜ DURDUR VE NEDENİNİ SÖYLE!
-                $err = isset($result['error']) ? $result['error'] : 'Bilinmeyen hata';
-                wp_send_json_error(['message' => $err]);
+            $texts_to_embed[] = "Soru: " . $row->question_text . " Cevap: " . $row->answer_text;
+            $ids[] = $row->id; // ID'leri sırasıyla tutuyoruz ki veritabanına doğru yazalım
+        }
+
+        // Yeni Batch fonksiyonumuzu çağırıyoruz (20 Soru = 1 API İsteği)
+        $result = QualityLife_API_Services::get_batch_text_embeddings($texts_to_embed);
+
+        if (isset($result['embeddings'])) {
+            $processed_count = 0;
+            foreach ($result['embeddings'] as $index => $embedding_data) {
+                if (isset($embedding_data['values'])) {
+                    $wpdb->update(
+                        $table,
+                        ['vector_data' => wp_json_encode($embedding_data['values'])],
+                        ['id' => $ids[$index]]
+                    );
+                    $processed_count++;
+                }
             }
+        } else {
+            $err = isset($result['error']) ? $result['error'] : 'Bilinmeyen hata';
+            wp_send_json_error(['message' => $err]);
         }
 
         $remaining = $wpdb->get_var("SELECT COUNT(id) FROM $table WHERE vector_data IS NULL");
 
         wp_send_json_success([
             'done' => false,
-            'processed' => $processed_count,
+            'processed' => $processed_count ?? 0,
             'remaining' => $remaining
         ]);
     }
