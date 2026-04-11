@@ -6,7 +6,8 @@ class QualityLife_API_Services {
     // 1. Gemini Metin Üretme (Flash Modeli)
     public static function ask_gemini($question_text, $barcode) {
         global $wpdb;
-        $api_key = get_option('ql_gemini_api_key', '');
+        $encrypted_key = get_option('ql_gemini_api_key', '');
+$api_key = self::decrypt_data($encrypted_key);
         if(empty($api_key)) return "Hata: Lütfen ayarlardan Gemini API Key giriniz.";
 
         $global_prompt = get_option('ql_gemini_system_prompt', 'Sen bir müşteri temsilcisisin.');
@@ -37,7 +38,8 @@ class QualityLife_API_Services {
 
    // 2. Gemini Vektör (Embedding) Oluşturma (Yeni!)
     public static function get_text_embedding($text) {
-        $api_key = get_option('ql_gemini_api_key', '');
+        $encrypted_key = get_option('ql_gemini_api_key', '');
+$api_key = self::decrypt_data($encrypted_key);
         if(empty($api_key)) return ['error' => 'API Anahtarı eksik.'];
 
      $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key={$api_key}";
@@ -66,7 +68,8 @@ $body = [
 
     // YENİ: Toplu (Batch) Vektör Oluşturma - Kotayı 20 kat rahatlatır
     public static function get_batch_text_embeddings($texts) {
-        $api_key = get_option('ql_gemini_api_key', '');
+        $encrypted_key = get_option('ql_gemini_api_key', '');
+$api_key = self::decrypt_data($encrypted_key);
         if(empty($api_key)) return ['error' => 'API Anahtarı eksik.'];
 
         // Batch işlemi için özel uç nokta (endpoint)
@@ -145,9 +148,10 @@ $body = [
     }
 
     // 2. Yeni Nesil Yapay Zeka Sorgusu (Vektör Destekli)
-    public static function ask_gemini_with_vector($question_text, $model_code) {
+   public static function ask_gemini_with_vector($question_text, $model_code, $store_id = '') {
         global $wpdb;
-        $api_key = get_option('ql_gemini_api_key', '');
+        $encrypted_key = get_option('ql_gemini_api_key', '');
+$api_key = self::decrypt_data($encrypted_key);
         if(empty($api_key)) return "Hata: API Key eksik.";
 
         // A. Soruyu Koordinatlara Çevir
@@ -187,33 +191,58 @@ $body = [
         $product_info = $wpdb->get_var($wpdb->prepare("SELECT product_info FROM {$table_knowledge} WHERE barcode = %s", $model_code));
         $product_info = $product_info ? $product_info : "Özel ürün bilgisi girilmemiş.";
 
-        // F. Gemini'ye Dev Görev Dosyasını (Prompt) Hazırla
-        $global_prompt = get_option('ql_gemini_system_prompt', 'Sen bir müşteri temsilcisisin.');
+       // F. Gemini'ye Hiyerarşik Öncelik Dosyasını (Prompt) Hazırla
+        $stores = get_option('ql_trendyol_stores', []);
+        $store_prompt = "Sen bir e-ticaret müşteri temsilcisisin. Nazik ve profesyonelce cevap ver.";
         
-        $prompt = "Aşağıdaki Müşteri Sorusuna e-ticaret kurallarına göre net, kısa ve nazik bir cevap yaz.\n\n";
-        $prompt .= "--- ÜRÜN BİLGİSİ ---\n$product_info\n\n";
-        
-        if(!empty($top_3)) {
-            $prompt .= "--- GEÇMİŞTE VERDİĞİMİZ BENZER CEVAPLAR (BUNLARI ÖRNEK AL) ---\n";
-            foreach($top_3 as $index => $t3) {
-                // Sadece benzerlik skoru %70 (0.70) üzerindeyse prompta ekle ki yapay zekanın kafası karışmasın
-                if($t3['score'] > 0.70) {
-                    $prompt .= ($index+1) . ". Soru: " . $t3['q'] . "\nBizim Eski Cevabımız: " . $t3['a'] . "\n(Benzerlik: %" . round($t3['score']*100) . ")\n\n";
-                }
-            }
+        if(!empty($store_id) && isset($stores[$store_id]) && !empty($stores[$store_id]['prompt'])) {
+            $store_prompt = $stores[$store_id]['prompt'];
         }
 
-        $prompt .= "--- YENİ MÜŞTERİ SORUSU ---\n$question_text\n\nCEVAP:";
+        $prompt = "Aşağıdaki yeni müşteri sorusuna cevap yazarken ŞU ÖNCELİK SIRASINA KESİNLİKLE UYMALISIN:\n\n";
+        $prompt .= "🔴 1. ÖNCELİK (MAĞAZA KURALLARI VE DİLİ):\n\"{$store_prompt}\"\n\n";
+        $prompt .= "🟡 2. ÖNCELİK (ÜRÜN BİLGİSİ):\n\"{$product_info}\"\n\n";
+        
+        if(!empty($top_3)) {
+            $prompt .= "🟢 3. ÖNCELİK (GEÇMİŞ CEVAPLAR / REFERANS VE UYARLAMA):\n";
+            $prompt .= "Aşağıdaki eski cevapları SADECE BİLGİ KAYNAĞI olarak kullan. Eski cevapları birebir kopyalama!\n";
+            $prompt .= "Eski cevabın içindeki 'efendim', 'iyi günler' gibi hitapları ve yazım hatalarını tamamen temizle. Sadece net bilgiyi al ve 1. kuraldaki Mağaza Dili'ne yedirerek pürüzsüz, tek parça bir cümle oluştur.\n";
+            foreach($top_3 as $index => $t3) {
+                if($t3['score'] > 0.70) {
+                    $prompt .= "Referans " . ($index+1) . " (Soru: " . $t3['q'] . ") -> Eski Cevap (Sadece içindeki bilgiyi al): " . $t3['a'] . "\n";
+                }
+            }
+            $prompt .= "\n";
+        }
 
-       // G. Sonucu Gemini'den İste
-      $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={$api_key}";
+        $prompt .= "🟣 4. KESİN KURAL (AKICILIK VE TEKRAR KONTROLÜ):\n";
+        $prompt .= "Cevabını müşteriye göndermeden önce son bir kez kontrol et. Aynı hitap kelimesini (örneğin 'efendim', 'merhaba') cümlede iki defa KULLANMA. Frankenstein gibi eklenmiş durmasın, doğal bir insanın ağzından çıkmış gibi akıcı olsun.\n\n";
+
+        $prompt .= "--- YENİ MÜŞTERİ SORUSU ---\n{$question_text}\n\nCEVAP:";
+
+        // G. Sonucu Gemini'den İste
+        $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={$api_key}";
+        
+        // DİKKAT: Google API 2.5 Standartlarına %100 Uygun JSON Şeması
         $body = [
-            "system_instruction" => [ "parts" => [["text" => $global_prompt]] ],
-            "contents" => [ ["parts" => [["text" => $prompt]]] ],
-            "generationConfig" => [ "temperature" => 0.4 ] // Geçmişe sadık kalması için yaratıcılığı 0.6'dan 0.4'e çektik
+            "systemInstruction" => [
+                "role" => "system",
+                "parts" => [
+                    [ "text" => (string) $store_prompt ]
+                ]
+            ],
+            "contents" => [
+                [
+                    "role" => "user",
+                    "parts" => [
+                        [ "text" => (string) $prompt ]
+                    ]
+                ]
+            ],
+            "generationConfig" => [ "temperature" => 0.4 ]
         ];
 
-       $response = wp_remote_post($url, ['headers' => ['Content-Type' => 'application/json'], 'body' => wp_json_encode($body), 'timeout' => 20]);
+        $response = wp_remote_post($url, ['headers' => ['Content-Type' => 'application/json'], 'body' => wp_json_encode($body), 'timeout' => 20]);
 
         if (is_wp_error($response)) return "Sunucu hatası: " . $response->get_error_message();
         
@@ -237,5 +266,33 @@ $body = [
 
         // 4. Beklenmeyen garip bir JSON geldiyse ne olduğunu görelim
         return "⚠️ Bilinmeyen Yapı: Google'dan gelen cevap okunamadı. Veri: " . wp_strip_all_tags($body_str);
+    }
+
+    // --- GÜVENLİK (ŞİFRELEME) MOTORU ---
+    
+    // 1. Veriyi Şifreler (Veritabanına kaydetmeden önce)
+    public static function encrypt_data($data) {
+        if (empty($data)) return $data;
+        $encrypt_method = "AES-256-CBC";
+        // wp-config.php içindeki eşsiz anahtarları kullanıyoruz
+        $secret_key = defined('AUTH_KEY') ? AUTH_KEY : 'ql_default_secure_key_123!';
+        $secret_iv = defined('SECURE_AUTH_KEY') ? SECURE_AUTH_KEY : 'ql_default_secure_iv_456!';
+        
+        $key = hash('sha256', $secret_key);
+        $iv = substr(hash('sha256', $secret_iv), 0, 16);
+        $output = openssl_encrypt($data, $encrypt_method, $key, 0, $iv);
+        return base64_encode($output);
+    }
+
+    // 2. Şifreyi Çözer (API'ye istek atarken)
+    public static function decrypt_data($data) {
+        if (empty($data)) return $data;
+        $encrypt_method = "AES-256-CBC";
+        $secret_key = defined('AUTH_KEY') ? AUTH_KEY : 'ql_default_secure_key_123!';
+        $secret_iv = defined('SECURE_AUTH_KEY') ? SECURE_AUTH_KEY : 'ql_default_secure_iv_456!';
+        
+        $key = hash('sha256', $secret_key);
+        $iv = substr(hash('sha256', $secret_iv), 0, 16);
+        return openssl_decrypt(base64_decode($data), $encrypt_method, $key, 0, $iv);
     }
 }

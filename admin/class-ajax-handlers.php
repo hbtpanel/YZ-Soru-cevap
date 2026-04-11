@@ -14,11 +14,12 @@ class QualityLife_AJAX_Handlers {
    public function ajax_ask_ai() {
         check_ajax_referer('ql_ajax_nonce', 'security');
         
-        $question = sanitize_textarea_field($_POST['question']);
+       $question = sanitize_textarea_field($_POST['question']);
         $barcode = sanitize_text_field($_POST['barcode']);
+        $store_id = isset($_POST['store_id']) ? sanitize_text_field($_POST['store_id']) : '';
         
-        // ŞALTERİ İNDİRİYORUZ: Eski basit RAG modeli yerine Yeni Nesil Vektör Zekasını Çağır!
-        $ans = QualityLife_API_Services::ask_gemini_with_vector($question, $barcode);
+        // Mağaza ID'sini de gönderiyoruz ki doğru kişiliği seçsin!
+        $ans = QualityLife_API_Services::ask_gemini_with_vector($question, $barcode, $store_id);
         
         wp_send_json_success(['answer' => $ans]);
     }
@@ -29,7 +30,8 @@ class QualityLife_AJAX_Handlers {
         $store = $stores[sanitize_text_field($_POST['store_id'])] ?? null;
         if(!$store) wp_send_json_error();
 
-        $result = QualityLife_API_Services::send_trendyol_answer($_POST['store_id'], $store['key'], $store['secret'], sanitize_text_field($_POST['q_id']), sanitize_textarea_field($_POST['answer']));
+        $trendyol_secret = QualityLife_API_Services::decrypt_data($store['secret']);
+        $result = QualityLife_API_Services::send_trendyol_answer($_POST['store_id'], $store['key'], $trendyol_secret, sanitize_text_field($_POST['q_id']), sanitize_textarea_field($_POST['answer']));
         $result ? wp_send_json_success() : wp_send_json_error();
     }
 
@@ -40,10 +42,12 @@ class QualityLife_AJAX_Handlers {
         $s = $stores[$id] ?? null;
 
         if (!$s) wp_send_json_error(['message' => 'Mağaza bulunamadı.']);
+        
+        $trendyol_secret = QualityLife_API_Services::decrypt_data($s['secret']);
 
         $url = "https://apigw.trendyol.com/integration/qna/sellers/{$id}/questions/filter?pageSize=1";
         $response = wp_remote_get($url, [
-            'headers'    => ['Authorization' => 'Basic ' . base64_encode($s['key'] . ':' . $s['secret']), 'Accept' => 'application/json'],
+            'headers'    => ['Authorization' => 'Basic ' . base64_encode($s['key'] . ':' . $trendyol_secret), 'Accept' => 'application/json'],
             'user-agent' => $id . ' - SelfIntegration',
             'sslverify'  => false,
             'timeout'    => 15
@@ -70,7 +74,9 @@ class QualityLife_AJAX_Handlers {
         
         $stores = get_option('ql_trendyol_stores', []);
         $s = $stores[$store_id] ?? null;
-        if (!$s) wp_send_json_error(['message' => 'Mağaza bulunamadı.']);
+       if (!$s) wp_send_json_error(['message' => 'Mağaza bulunamadı.']);
+        
+        $trendyol_secret = QualityLife_API_Services::decrypt_data($s['secret']);
 
         $url = "https://apigw.trendyol.com/integration/qna/sellers/{$store_id}/questions/filter?status=ANSWERED&size=50&page={$page}";
         if (!empty($_POST['start_ms']) && !empty($_POST['end_ms'])) {
@@ -78,7 +84,7 @@ class QualityLife_AJAX_Handlers {
         }
 
         $response = wp_remote_get($url, [
-            'headers'    => ['Authorization' => 'Basic ' . base64_encode($s['key'] . ':' . $s['secret']), 'Accept' => 'application/json'],
+            'headers'    => ['Authorization' => 'Basic ' . base64_encode($s['key'] . ':' . $trendyol_secret), 'Accept' => 'application/json'],
             'user-agent' => $store_id . ' - SelfIntegration',
             'sslverify'  => false,
             'timeout'    => 20
