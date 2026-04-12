@@ -161,12 +161,9 @@ $api_key = self::decrypt_data($encrypted_key);
         }
         $new_vector = $new_question_vector_data['values'];
 
-        // B. Veritabanından o ürüne ait İndekslenmiş eski soruları çek
+       // B. Veritabanından o ürüne ait İndekslenmiş EN GÜNCEL 500 eski soruyu çek (Performans ve Güncellik için)
         $table_all = $wpdb->prefix . 'ql_all_questions';
-        $past_questions = $wpdb->get_results($wpdb->prepare(
-            "SELECT question_text, answer_text, vector_data FROM $table_all WHERE model_code = %s AND vector_data IS NOT NULL", 
-            $model_code
-        ));
+       $past_questions = $wpdb->get_results($wpdb->prepare("SELECT question_text, answer_text, vector_data FROM $table_all WHERE model_code = %s AND vector_data IS NOT NULL ORDER BY created_date DESC LIMIT 500", $model_code));
 
         // C. Matematiksel Benzerlik Yarışması (Skorlama)
         $scored_questions = [];
@@ -294,5 +291,43 @@ $api_key = self::decrypt_data($encrypted_key);
         $key = hash('sha256', $secret_key);
         $iv = substr(hash('sha256', $secret_iv), 0, 16);
         return openssl_decrypt(base64_decode($data), $encrypt_method, $key, 0, $iv);
+    }
+    // --- TRENDYOL TÜM ÜRÜNLERİ ÇEKME ---
+    public static function get_trendyol_products($seller_id, $api_key, $api_secret) {
+        $all_items = [];
+        $page = 0;
+        $size = 100; // Her sayfada 100 ürün çekelim
+
+        while (true) {
+            $url = "https://apigw.trendyol.com/integration/product/sellers/{$seller_id}/products?page={$page}&size={$size}";
+            
+            $response = wp_remote_get($url, [
+                'headers' => [
+                    'Authorization' => 'Basic ' . base64_encode($api_key . ':' . $api_secret),
+                    'User-Agent'    => $seller_id . ' - QL-AI'
+                ],
+                'timeout' => 30
+            ]);
+
+            if (is_wp_error($response)) break;
+            
+            $data = json_decode(wp_remote_retrieve_body($response), true);
+            $items = $data['content'] ?? [];
+
+            if (empty($items)) break;
+
+            foreach ($items as $item) {
+                $all_items[] = [
+                    'barcode'    => $item['barcode'] ?? '',
+                    'model_code' => $item['productMainId'] ?? '',
+                    'name'       => $item['title'] ?? $item['productName'] ?? 'İsimsiz Ürün'
+                ];
+            }
+
+            // Toplam sayfa sayısına ulaştıysak dur
+            if ($page >= ($data['totalPages'] ?? 0) - 1) break;
+            $page++;
+        }
+        return $all_items;
     }
 }

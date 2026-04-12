@@ -16,6 +16,7 @@ class QualityLife_Admin_Pages {
         add_menu_page('YZ Eğitim ve Ayarlar', 'YZ Asistan', 'manage_options', 'ql-ai-settings', [ $this, 'page_settings' ], 'dashicons-robot', 30);
         add_submenu_page('ql-ai-settings', 'Bekleyen Sorular', 'Bekleyen Sorular', 'manage_options', 'ql-ai-questions', [ $this, 'page_questions' ]);
         add_submenu_page('ql-ai-settings', 'Soru Arşivi', 'Soru Arşivi (Bot)', 'manage_options', 'ql-ai-past-questions', [ $this, 'page_past_questions' ]);
+       add_submenu_page('ql-ai-settings', 'Ürün Eğitimi (RAG)', '🧠 Ürün Eğitimi', 'manage_options', 'ql-ai-training', [$this, 'page_product_training']);
     }
 
     // --- SAYFA 1: AYARLAR ---
@@ -329,105 +330,147 @@ class QualityLife_Admin_Pages {
         <?php
     }
 
-    // --- SAYFA 2: BEKLEYEN SORULAR ---
-    // --- SAYFA 2: BEKLEYEN SORULAR ---
+    // --- SAYFA 2: BEKLEYEN SORULAR (BİRLEŞİK PANEL) ---
     public function page_questions() {
         $stores = get_option('ql_trendyol_stores', []);
-        $selected_seller_id = isset($_GET['store_id']) ? sanitize_text_field($_GET['store_id']) : (empty($stores) ? '' : array_key_first($stores));
+        
+        // Varsayılan olarak 'all' (Tüm Mağazalar) seçili gelsin
+        $selected_seller_id = isset($_GET['store_id']) ? sanitize_text_field($_GET['store_id']) : 'all';
 
-        $questions = [];
-        if(!empty($selected_seller_id) && isset($stores[$selected_seller_id])) {
-            $s = $stores[$selected_seller_id];
+        $all_questions = [];
+        
+        // Mağazaları döngüye al ve soruları topla
+        foreach($stores as $sid => $s) {
+            // Eğer bir mağaza filtresi varsa ve o anki mağaza o değilse atla
+            if ($selected_seller_id !== 'all' && $selected_seller_id !== $sid) {
+                continue;
+            }
             
-            // GÜVENLİK: Şifrelenmiş Trendyol Secret Key'i burada çözüyoruz!
-            $trendyol_secret = QualityLife_API_Services::decrypt_data($s['secret']);
-            $questions = QualityLife_API_Services::get_trendyol_questions($selected_seller_id, $s['key'], $trendyol_secret);
+            $qs = QualityLife_API_Services::get_trendyol_questions($sid, $s['key'], $s['secret']);
+            
+            if (!empty($qs) && is_array($qs)) {
+                foreach($qs as $q) {
+                    // Her soruya ait olduğu mağaza bilgisini enjekte et
+                    $q['ql_store_name'] = $s['name'];
+                    $q['ql_store_id'] = $sid;
+                    $all_questions[] = $q;
+                }
+            }
         }
         ?>
-        <style>
-            :root { --ql-primary: #4f46e5; --ql-primary-hover: #4338ca; --ql-secondary: #0ea5e9; --ql-bg: #f8fafc; --ql-card: #ffffff; --ql-text: #1e293b; --ql-text-light: #64748b; --ql-border: #e2e8f0; --ql-success: #10b981; }
-            .ql-wrap { margin: 20px 20px 0 0; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: var(--ql-text); }
-            .ql-header { display: flex; justify-content: space-between; align-items: center; background: linear-gradient(135deg, var(--ql-primary), var(--ql-secondary)); padding: 25px 35px; border-radius: 16px; color: white; box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.3); margin-bottom: 30px; }
-            .ql-header h1 { color: white; margin: 0; font-size: 26px; font-weight: 700; }
-            .ql-card { background: var(--ql-card); border-radius: 16px; padding: 25px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); border: 1px solid var(--ql-border); transition: all 0.3s; }
-            .ql-card:hover { transform: translateY(-3px); box-shadow: 0 15px 20px -5px rgba(0, 0, 0, 0.1); }
-            .ql-textarea { width: 100%; padding: 12px 16px; border: 1px solid var(--ql-border); border-radius: 10px; margin-bottom: 16px; font-size: 14px; background: #fbfbfc; box-sizing: border-box; }
-            .ql-textarea:focus { border-color: var(--ql-primary); box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.15); outline: none; background: #fff; }
-            .ql-btn { background: var(--ql-primary); color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; transition: all 0.2s; }
-            .ql-btn:hover { background: var(--ql-primary-hover); transform: translateY(-1px); }
-            .ql-btn-secondary { background: var(--ql-bg); color: var(--ql-text); border: 1px solid var(--ql-border); }
-            .ql-btn-secondary:hover { background: #e2e8f0; }
-        </style>
-
-        <div class="ql-wrap">
-            <div class="ql-header">
-                <div>
-                    <h1>📥 Bekleyen Müşteri Soruları</h1>
-                    <div style="font-size: 14px; opacity: 0.9; margin-top: 5px;">Müşterileriniz yapay zekanın sihrini bekliyor.</div>
-                </div>
-                <div>
-                    <form method="get" action="" style="background: rgba(255,255,255,0.2); padding: 8px 16px; border-radius: 12px; backdrop-filter: blur(10px);">
-                        <input type="hidden" name="page" value="ql-ai-questions">
-                        <select name="store_id" onchange="this.form.submit()" style="background: transparent; color: white; border: none; font-weight: 600; font-size: 14px; outline: none; cursor: pointer;">
-                            <option value="" style="color: black;">Mağaza Seçin...</option>
-                            <?php foreach($stores as $id => $store): ?>
-                                <option value="<?php echo esc_attr($id); ?>" <?php selected($selected_seller_id, $id); ?> style="color: black;"><?php echo esc_html($store['name']); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </form>
-                </div>
+        <div class="wrap">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h1>📥 Bekleyen Trendyol Soruları</h1>
+                <form method="get" action="">
+                    <input type="hidden" name="page" value="ql-ai-questions">
+                    <select name="store_id" onchange="this.form.submit()" style="padding: 5px; font-size: 14px; border-radius: 4px;">
+                        <option value="all" <?php selected($selected_seller_id, 'all'); ?>>🌐 Tüm Mağazalar</option>
+                        <?php foreach($stores as $id => $store): ?>
+                            <option value="<?php echo esc_attr($id); ?>" <?php selected($selected_seller_id, $id); ?>>🏪 <?php echo esc_html($store['name']); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </form>
             </div>
-            
-            <?php if(empty($questions)): ?>
-                <div class="notice notice-info" style="border-radius: 10px; border-left: 4px solid var(--ql-secondary); padding: 15px; background: #fff; display: flex; align-items: center; gap: 10px;">
-                    <span style="font-size: 20px;">🎉</span>
-                    <p style="margin:0; font-size: 15px;"><strong>Harika!</strong> Şu an bekleyen hiçbir soru yok. Tüm müşteriler mutlu.</p>
-                </div>
+            <hr>
+
+            <?php if(empty($all_questions)): ?>
+                <div class="notice notice-info"><p>Şu an yanıtlanmayı bekleyen soru bulunmuyor.</p></div>
             <?php else: ?>
-                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 25px;">
-                    <?php foreach($questions as $q): 
+                
+                <div style="margin: 20px 0; padding: 20px; background: #fff; border-left: 4px solid #6a1b9a; border-radius: 4px; box-shadow: 0 1px 1px rgba(0,0,0,.04); display: flex; align-items: center; gap: 20px;">
+                    <div>
+                        <h3 style="margin: 0 0 5px 0;">🤖 Otomatik YZ Asistanı</h3>
+                        <p style="margin: 0; color: #666;">Listedeki <strong><?php echo count($all_questions); ?></strong> sorunun tamamı için taslak cevapları hazırlatın.</p>
+                    </div>
+                    <button type="button" class="button button-primary button-large" id="btn-ask-all" style="background: #6a1b9a; border-color: #4a148c;">✨ Tümüne YZ Cevabı Üret</button>
+                    <span id="ask-all-status" style="font-weight: bold; color: #6a1b9a;"></span>
+                </div>
+
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 20px; margin-top: 20px;">
+                    <?php foreach($all_questions as $q): 
                         $q_id = esc_attr($q['id']);
                         $text = esc_html($q['text']);
                         $product_name = esc_html($q['productName']);
                         $barcode = isset($q['productMainId']) ? esc_attr($q['productMainId']) : '';
+                        $store_name = esc_html($q['ql_store_name']);
+                        $store_id = esc_attr($q['ql_store_id']);
                     ?>
-                    <div class="ql-card">
-                        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
-                            <h4 style="margin: 0; font-size: 15px; font-weight: 600; color: var(--ql-primary); flex: 1;"><?php echo $product_name; ?></h4>
-                            <span style="background: var(--ql-bg); color: var(--ql-text-light); padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; border: 1px solid var(--ql-border);">📦 <?php echo $barcode; ?></span>
-                        </div>
-                        
-                        <div style="background: #f0fdfa; border-left: 4px solid #0d9488; padding: 15px; border-radius: 0 10px 10px 0; margin-bottom: 15px;">
-                            <strong style="color: #0f766e; display: block; margin-bottom: 5px; font-size: 12px;">MÜŞTERİ SORUSU:</strong>
-                            <span style="color: #115e59; font-size: 14px; line-height: 1.5;"><?php echo $text; ?></span>
+                    <div class="ql-card" style="background: #fff; padding: 15px; border: 1px solid #ccd0d4; border-radius: 6px; position: relative;">
+                        <div style="position: absolute; top: 10px; right: 10px;">
+                            <span style="background: #f0f6fc; color: #2271b1; padding: 3px 10px; border-radius: 15px; font-size: 10px; font-weight: bold; border: 1px solid #2271b1;">
+                                🏪 <?php echo $store_name; ?>
+                            </span>
                         </div>
 
-                        <textarea id="ans_<?php echo $q_id; ?>" class="ql-textarea" rows="4" placeholder="Yapay zeka cevabını buraya hazırlayacak..."></textarea>
+                        <h4 style="margin: 0 0 5px 0; padding-right: 100px;"><?php echo $product_name; ?></h4>
+                        <span style="background: #eee; padding: 2px 6px; border-radius: 3px; font-size: 11px;">Model: <?php echo $barcode; ?></span>
                         
-                        <div style="display: flex; justify-content: space-between; gap: 10px;">
-                            <button type="button" class="ql-btn ql-btn-secondary btn-ask" style="flex: 1;" data-id="<?php echo $q_id; ?>" data-store="<?php echo esc_attr($selected_seller_id); ?>" data-barcode="<?php echo $barcode; ?>" data-q="<?php echo esc_attr($text); ?>">✨ YZ ile Hazırla</button>
-                            <button type="button" class="ql-btn btn-send" style="flex: 1; background: #10b981;" data-id="<?php echo $q_id; ?>" data-store="<?php echo esc_attr($selected_seller_id); ?>">🚀 Trendyol'a Gönder</button>
+                        <div style="background: #f0f6fc; border-left: 4px solid #2271b1; padding: 10px; margin: 10px 0;">
+                            <strong>Soru:</strong> <?php echo $text; ?>
+                        </div>
+
+                        <textarea id="ans_<?php echo $q_id; ?>" rows="5" style="width: 100%; margin-bottom: 10px;" placeholder="Yapay zeka cevabı..."></textarea>
+                        
+                        <div style="display: flex; justify-content: space-between;">
+                            <button type="button" class="button btn-ask" data-id="<?php echo $q_id; ?>" data-barcode="<?php echo $barcode; ?>" data-q="<?php echo esc_attr($text); ?>">✨ YZ Hazırla</button>
+                            <button type="button" class="button button-primary btn-send" data-id="<?php echo $q_id; ?>" data-store="<?php echo $store_id; ?>">🚀 Gönder</button>
                         </div>
                     </div>
                     <?php endforeach; ?>
                 </div>
             <?php endif; ?>
         </div>
+
         <script>
         document.addEventListener('DOMContentLoaded', function() {
             const nonce = '<?php echo wp_create_nonce("ql_ajax_nonce"); ?>';
+            
+            // TOPLU İŞLEM BOTU JS
+            const btnAskAll = document.getElementById('btn-ask-all');
+            if (btnAskAll) {
+                btnAskAll.addEventListener('click', async function() {
+                    const buttons = document.querySelectorAll('.btn-ask');
+                    const statusLabel = document.getElementById('ask-all-status');
+                    if(!confirm(buttons.length + ' soru için YZ cevabı üretilecek. Devam edilsin mi?')) return;
+                    
+                    this.disabled = true;
+                    for(let i = 0; i < buttons.length; i++) {
+                        const btn = buttons[i];
+                        statusLabel.innerHTML = `⏳ ${i + 1} / ${buttons.length} hazırlanıyor...`;
+                        btn.closest('.ql-card').scrollIntoView({behavior: "smooth", block: "center"});
+                        
+                        const id = btn.dataset.id;
+                        const box = document.getElementById('ans_' + id);
+                        if (box.value.trim() !== '') continue;
+
+                        btn.disabled = true; btn.innerHTML = '⏳...';
+                        const fd = new FormData();
+                        fd.append('action', 'ql_ask_ai'); fd.append('security', nonce); fd.append('question', btn.dataset.q); fd.append('barcode', btn.dataset.barcode);
+                        try {
+                            const res = await fetch(ajaxurl, { method: 'POST', body: fd });
+                            const data = await res.json();
+                            box.value = data.success ? data.data.answer : 'Hata.';
+                        } catch (e) { box.value = 'Hata.'; }
+                        btn.disabled = false; btn.innerHTML = '✨ Hazırla';
+                        if (i < buttons.length - 1) await new Promise(r => setTimeout(r, 4000));
+                    }
+                    statusLabel.innerHTML = '✅ Tüm taslaklar hazır.';
+                    this.disabled = false;
+                });
+            }
+
+            // TEKİL İŞLEMLER VE GÖNDERME LOGİC'İ (Aynı kalıyor)
             document.querySelectorAll('.btn-ask').forEach(btn => {
                 btn.addEventListener('click', async function() {
-                    const id = this.dataset.id;
-                    const box = document.getElementById('ans_' + id);
-                    this.disabled = true; this.innerHTML = '⏳ Düşünüyor...';
+                    const id = this.dataset.id; const box = document.getElementById('ans_' + id);
+                    this.disabled = true; this.innerHTML = '⏳...';
                     const fd = new FormData();
-                    fd.append('action', 'ql_ask_ai'); fd.append('security', nonce); fd.append('question', this.dataset.q); fd.append('barcode', this.dataset.barcode); fd.append('store_id', this.dataset.store);
+                    fd.append('action', 'ql_ask_ai'); fd.append('security', nonce); fd.append('question', this.dataset.q); fd.append('barcode', this.dataset.barcode);
                     try {
                         const res = await fetch(ajaxurl, { method: 'POST', body: fd });
                         const data = await res.json();
-                        box.value = data.success ? data.data.answer : 'Hata oluştu.';
-                    } catch (e) { box.value = 'Bağlantı hatası.'; }
+                        box.value = data.success ? data.data.answer : 'Hata.';
+                    } catch (e) { box.value = 'Hata.'; }
                     this.disabled = false; this.innerHTML = '✨ Yeniden Hazırla';
                 });
             });
@@ -436,22 +479,16 @@ class QualityLife_Admin_Pages {
                 btn.addEventListener('click', async function() {
                     const id = this.dataset.id; const store = this.dataset.store;
                     const answer = document.getElementById('ans_' + id).value.trim();
-                    if(!answer) return alert('Lütfen önce yapay zekaya cevap hazırlatın veya manuel bir şeyler yazın!');
-                    if(!confirm('Bu cevap doğrudan Trendyol müşterisine gidecek. Onaylıyor musunuz?')) return;
-                    
-                    this.disabled = true; this.innerHTML = '🚀 İletiliyor...';
+                    if(!answer) return alert('Cevap boş olamaz!');
+                    this.disabled = true; this.innerHTML = '🚀...';
                     const fd = new FormData();
                     fd.append('action', 'ql_send_answer'); fd.append('security', nonce); fd.append('q_id', id); fd.append('answer', answer); fd.append('store_id', store);
                     try {
                         const res = await fetch(ajaxurl, { method: 'POST', body: fd });
                         const data = await res.json();
-                        if(data.success) { 
-                            this.closest('.ql-card').style.opacity = '0.5'; 
-                            this.innerHTML = '✅ Gönderildi'; 
-                            setTimeout(() => this.closest('.ql-card').style.display = 'none', 1000);
-                        } 
-                        else { alert('Trendyol API Hatası.'); this.disabled = false; this.innerHTML = '🚀 Tekrar Dene'; }
-                    } catch (e) { alert('Bağlantı koptu.'); this.disabled = false; }
+                        if(data.success) { this.closest('.ql-card').style.opacity = '0.3'; this.innerHTML = '✅ Gönderildi'; }
+                        else alert('Hata oluştu.');
+                    } catch (e) { alert('Bağlantı hatası.'); }
                 });
             });
         });
@@ -459,7 +496,135 @@ class QualityLife_Admin_Pages {
         <?php
     }
 
-    // --- SAYFA 3: ARŞİV VE BOT ---
+   // --- YENİ SAYFA: ÜRÜN EĞİTİM MERKEZİ (RAG) ---
+    public function page_product_training() {
+        $stores = get_option('ql_trendyol_stores', []);
+        ?>
+        <div class="wrap ql-ai-wrapper">
+           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; margin-bottom: 20px;">
+                <h1 style="margin:0;">🧠 Ürün Eğitim Merkezi (RAG)</h1>
+                <button type="button" id="btn-sync-products" class="button button-primary" style="background: #2271b1;">🔄 Trendyol'dan Ürünleri Güncelle</button>
+            </div>
+
+            <div style="background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 20px; display: flex; gap: 10px;">
+                <input type="text" id="ql-product-search" placeholder="Barkod veya Ürün Adı ile ara..." style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 16px;">
+            </div>
+
+            <div style="background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <div style="display: grid; grid-template-columns: 1fr 2fr 1.5fr 1fr; background: #f8f9fa; padding: 15px; font-weight: bold; border-bottom: 1px solid #eee;">
+                    <div>Model / Barkod</div>
+                    <div>Ürün Adı</div>
+                    <div>Öğrenilmiş Kural (RAG)</div>
+                    <div style="text-align: right;">İşlem</div>
+                </div>
+                <div id="ql-product-items">
+                    <div style="padding: 40px; text-align: center; color: #888;">Yükleniyor...</div>
+                </div>
+            </div>
+        </div>
+
+        <div id="ql-edit-modal" style="display:none; position: fixed; z-index: 9999; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center;">
+            <div style="background: #fff; width: 90%; max-width: 600px; padding: 25px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
+                <h2 id="modal-title" style="margin-top:0;">Ürün Bilgisini Düzenle</h2>
+                <p id="modal-subtitle" style="color: #666; font-size: 13px;"></p>
+                <textarea id="modal-info-text" rows="8" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid #ddd; margin: 15px 0;" placeholder="Bu ürün hakkında yapay zekanın bilmesi gereken kuralları, içerikleri veya kullanım şeklini yazın..."></textarea>
+                <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <button type="button" class="button" onclick="document.getElementById('ql-edit-modal').style.display='none'">İptal</button>
+                    <button type="button" id="btn-save-product-info" class="button button-primary">Kaydet ve Eğit</button>
+                </div>
+            </div>
+        </div>
+
+        <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const container = document.getElementById('ql-product-items');
+            const searchInput = document.getElementById('ql-product-search');
+            const nonce = '<?php echo wp_create_nonce("ql_ajax_nonce"); ?>';
+
+            async function fetchProducts(search = '') {
+                container.innerHTML = '<div style="padding:40px; text-align:center;">Yükleniyor...</div>';
+                const fd = new FormData();
+                fd.append('action', 'ql_fetch_training_products');
+                fd.append('security', nonce);
+                fd.append('search', search);
+
+                try {
+                    const res = await fetch(ajaxurl, { method: 'POST', body: fd });
+                    const data = await res.json();
+                    container.innerHTML = data.data.html;
+
+                    document.querySelectorAll('.btn-edit-product').forEach(btn => {
+                        btn.addEventListener('click', function() {
+                            document.getElementById('modal-title').innerText = this.dataset.model;
+                            document.getElementById('modal-subtitle').innerText = this.dataset.name;
+                            document.getElementById('modal-info-text').value = this.dataset.info || '';
+                            document.getElementById('btn-save-product-info').dataset.barcode = this.dataset.model;
+                            document.getElementById('ql-edit-modal').style.display = 'flex';
+                        });
+                    });
+                } catch(e) { container.innerHTML = 'Hata oluştu.'; }
+            }
+
+            let timeout = null;
+            searchInput.addEventListener('keyup', () => {
+                clearTimeout(timeout);
+                timeout = setTimeout(() => fetchProducts(searchInput.value), 500);
+            });
+
+            document.getElementById('btn-save-product-info').addEventListener('click', async function() {
+                const btn = this;
+                const barcode = btn.dataset.barcode;
+                const info = document.getElementById('modal-info-text').value;
+
+                btn.disabled = true; btn.innerText = 'Kaydediliyor...';
+                
+                const fd = new FormData();
+                fd.append('action', 'ql_save_product_rule');
+                fd.append('security', nonce);
+                fd.append('barcode', barcode);
+                fd.append('info', info);
+
+                await fetch(ajaxurl, { method: 'POST', body: fd });
+                
+                btn.disabled = false; btn.innerText = 'Kaydet ve Eğit';
+                document.getElementById('ql-edit-modal').style.display = 'none';
+                fetchProducts(searchInput.value); 
+            });
+
+           fetchProducts(); // Sayfa açılınca ilk yükleme
+
+            // YENİ: TRENDYOL SENKRONİZASYON BUTONU İŞLEVİ
+            const btnSync = document.getElementById('btn-sync-products');
+            if(btnSync) {
+                btnSync.addEventListener('click', async function() {
+                    if(!confirm('Tüm mağazalardaki ürünleriniz çekilecek. Bu işlem ürün sayınıza göre biraz sürebilir. Başlayalım mı?')) return;
+                    
+                    this.disabled = true;
+                    this.innerText = '🔄 Senkronize Ediliyor...';
+                    
+                    const fd = new FormData();
+                    fd.append('action', 'ql_sync_trendyol_products');
+                    fd.append('security', nonce);
+
+                    try {
+                        const res = await fetch(ajaxurl, { method: 'POST', body: fd });
+                       const data = await res.json();
+                        if (data.success) {
+                            alert(data.data);
+                        } else {
+                            alert('Hata Yakalandı:\n' + data.data);
+                        }
+                        fetchProducts(searchInput.value); // İşlem bitince listeyi arka planda yenile
+                    } catch (e) { alert('Hata oluştu.'); }
+                    
+                    this.disabled = false;
+                    this.innerText = '🔄 Trendyol\'dan Ürünleri Güncelle';
+                });
+            }
+        });
+        </script>
+        <?php
+    }
    // --- SAYFA 3: ARŞİV VE BOT ---
     public function page_past_questions() {
         global $wpdb;

@@ -10,6 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 // Alt dosyaları sisteme dahil et
 require_once plugin_dir_path( __FILE__ ) . 'includes/class-api-services.php';
+require_once plugin_dir_path( __FILE__ ) . 'includes/class-cron-jobs.php'; // YENİ
 require_once plugin_dir_path( __FILE__ ) . 'admin/class-admin-pages.php';
 require_once plugin_dir_path( __FILE__ ) . 'admin/class-ajax-handlers.php';
 
@@ -28,9 +29,10 @@ class QualityLife_AI_Core {
             }
         }
 
-        // Modülleri Başlat
+       // Modülleri Başlat
         new QualityLife_Admin_Pages();
         new QualityLife_AJAX_Handlers();
+        new QualityLife_Cron_Jobs(); // YENİ EKLENDİ
     }
 
     public function activate_plugin() {
