@@ -320,6 +320,7 @@ class QualityLife_Admin_Pages {
         <div class="wrap">
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <h1>📥 Bekleyen Trendyol Soruları</h1>
+                
                 <form method="get" action="">
                     <input type="hidden" name="page" value="ql-ai-questions">
                     <select name="store_id" onchange="this.form.submit()" style="padding: 5px; font-size: 14px; border-radius: 4px;">

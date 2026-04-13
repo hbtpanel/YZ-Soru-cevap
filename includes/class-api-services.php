@@ -194,12 +194,17 @@ $api_key = self::decrypt_data($encrypted_key);
         usort($scored_questions, function($a, $b) { return $b['score'] <=> $a['score']; });
         $top_3 = array_slice($scored_questions, 0, 3);
 
-        // E. Manuel girdiğimiz ürün bilgisini de al (RAG)
+        // E. Veritabanından Ürün Adını ve Manuel Bilgisini (RAG) Çek
         $table_knowledge = $wpdb->prefix . 'ql_product_knowledge';
         $product_info = $wpdb->get_var($wpdb->prepare("SELECT product_info FROM {$table_knowledge} WHERE barcode = %s", $model_code));
         $product_info = $product_info ? $product_info : "Özel ürün bilgisi girilmemiş.";
 
-       // F. Gemini'ye Hiyerarşik Öncelik Dosyasını (Prompt) Hazırla
+        // YENİ: Ürün adını geçmiş sorulardan otomatik çek (Yapay zekanın kör olmaması için)
+        $table_all = $wpdb->prefix . 'ql_all_questions';
+        $product_name = $wpdb->get_var($wpdb->prepare("SELECT product_name FROM {$table_all} WHERE model_code = %s AND product_name IS NOT NULL LIMIT 1", $model_code));
+        $product_name = $product_name ? $product_name : "Bilinmeyen Ürün";
+
+       // F. Gemini'ye Katı Hiyerarşik Prompt (Sistem İstemi) Hazırla
         $stores = get_option('ql_trendyol_stores', []);
         $store_prompt = "Sen bir e-ticaret müşteri temsilcisisin. Nazik ve profesyonelce cevap ver.";
         
@@ -207,24 +212,25 @@ $api_key = self::decrypt_data($encrypted_key);
             $store_prompt = $stores[$store_id]['prompt'];
         }
 
-        $prompt = "Aşağıdaki yeni müşteri sorusuna cevap yazarken ŞU ÖNCELİK SIRASINA KESİNLİKLE UYMALISIN:\n\n";
-        $prompt .= "🔴 1. ÖNCELİK (MAĞAZA KURALLARI VE DİLİ):\n\"{$store_prompt}\"\n\n";
-        $prompt .= "🟡 2. ÖNCELİK (ÜRÜN BİLGİSİ):\n\"{$product_info}\"\n\n";
+        $prompt = "Müşteri '{$product_name}' isimli ürün için bir soru sordu. Cevap üretirken ŞU ADIMLARI KESİNLİKLE VE SIRASIYLA UYGULA:\n\n";
+        
+        $prompt .= "🔴 1. ADIM (MAĞAZA DİLİ): Sana 'system' talimatı olarak verilen mağaza kişiliğine, üslubuna ve kurallarına %100 sadık kalacaksın.\n\n";
+        
+        $prompt .= "🟡 2. ADIM (ÜRÜN BİLGİSİ - İLK KONTROL NOKTASI):\nEğer sorunun cevabı aşağıdaki özel ürün açıklamasında (kurallarında) varsa SADECE bu bilgiyi kullanarak mağaza diline göre cevapla:\n\"{$product_info}\"\n\n";
         
         if(!empty($top_3)) {
-            $prompt .= "🟢 3. ÖNCELİK (GEÇMİŞ CEVAPLAR / REFERANS VE UYARLAMA):\n";
-            $prompt .= "Aşağıdaki eski cevapları SADECE BİLGİ KAYNAĞI olarak kullan. Eski cevapları birebir kopyalama!\n";
-            $prompt .= "Eski cevabın içindeki 'efendim', 'iyi günler' gibi hitapları ve yazım hatalarını tamamen temizle. Sadece net bilgiyi al ve 1. kuraldaki Mağaza Dili'ne yedirerek pürüzsüz, tek parça bir cümle oluştur.\n";
+            $prompt .= "🟢 3. ADIM (GEÇMİŞ CEVAPLAR - İKİNCİ KONTROL NOKTASI):\nEğer 2. adımdaki bilgiler soruyu çözmüyorsa, aşağıdaki geçmiş cevapları referans al. (Kötü hitapları temizle, net bilgiyi al ve mağaza diline uyarla):\n";
             foreach($top_3 as $index => $t3) {
-                if($t3['score'] > 0.70) {
-                    $prompt .= "Referans " . ($index+1) . " (Soru: " . $t3['q'] . ") -> Eski Cevap (Sadece içindeki bilgiyi al): " . $t3['a'] . "\n";
+                if($t3['score'] > 0.70) { // Sadece benzerliği yüksek olanları dahil et
+                    $prompt .= "- Eski Soru: " . $t3['q'] . " | Eski Cevap: " . $t3['a'] . "\n";
                 }
             }
             $prompt .= "\n";
         }
 
-        $prompt .= "🟣 4. KESİN KURAL (AKICILIK VE TEKRAR KONTROLÜ):\n";
-        $prompt .= "Cevabını müşteriye göndermeden önce son bir kez kontrol et. Aynı hitap kelimesini (örneğin 'efendim', 'merhaba') cümlede iki defa KULLANMA. Frankenstein gibi eklenmiş durmasın, doğal bir insanın ağzından çıkmış gibi akıcı olsun.\n\n";
+        $prompt .= "🔵 4. ADIM (YAPAY ZEKA İNİSİYATİFİ - SON ÇARE):\nEğer 2. ve 3. adımlarda (Özel Ürün Bilgisi veya Geçmiş Sorular) sorunun NET bir cevabı YOKSA, '{$product_name}' ürününün ne olduğunu, ne işe yaradığını genel kültürün ve sektörel bilginle analiz et. Soruyu mantıklı, ikna edici ve tutarlı bir e-ticaret diliyle kendin cevapla.\n\n";
+
+        $prompt .= "🟣 KESİN KURAL (AKICILIK): Aynı hitap kelimesini (örneğin 'efendim', 'iyi günler') cümlede iki defa asla kullanma. Frankenstein gibi eklenmiş durmasın, doğal bir insanın ağzından çıkmış gibi tek parça ve profesyonel bir metin oluştur.\n\n";
 
         $prompt .= "--- YENİ MÜŞTERİ SORUSU ---\n{$question_text}\n\nCEVAP:";
 
