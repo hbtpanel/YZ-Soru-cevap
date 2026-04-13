@@ -159,7 +159,7 @@ $api_key = self::decrypt_data($encrypted_key);
     }
 
     // 2. Yeni Nesil Yapay Zeka Sorgusu (Vektör Destekli)
-   public static function ask_gemini_with_vector($question_text, $model_code, $store_id = '') {
+   public static function ask_gemini_with_vector($question_text, $model_code, $store_id = '', $quick_note = '') {
         global $wpdb;
         $encrypted_key = get_option('ql_gemini_api_key', '');
 $api_key = self::decrypt_data($encrypted_key);
@@ -214,6 +214,11 @@ $api_key = self::decrypt_data($encrypted_key);
         }
 
         $prompt = "Müşteri '{$product_name}' isimli ürün için bir soru sordu. Cevap üretirken ŞU ADIMLARI KESİNLİKLE VE SIRASIYLA UYGULA:\n\n";
+
+        if (!empty($quick_note)) {
+            $prompt .= "⚠️ KRİTİK ÖNCELİKLİ BİLGİ (BU SORUYA ÖZEL): {$quick_note}\n";
+            $prompt .= "Bu bilgi, aşağıdaki diğer tüm kurallardan daha önceliklidir. Cevabı buna göre şekillendir.\n\n";
+        }
         
         $prompt .= "🔴 1. ADIM (MAĞAZA DİLİ): Sana 'system' talimatı olarak verilen mağaza kişiliğine, üslubuna ve kurallarına %100 sadık kalacaksın.\n\n";
         
@@ -230,8 +235,9 @@ $api_key = self::decrypt_data($encrypted_key);
             $prompt .= "\n";
         }
 
-        $prompt .= "🔵 4. ADIM (YAPAY ZEKA İNİSİYATİFİ - SON ÇARE):\nEğer 2. ve 3. adımlarda (Özel Ürün Bilgisi veya Geçmiş Sorular) sorunun NET bir cevabı YOKSA, '{$product_name}' ürününün ne olduğunu, ne işe yaradığını genel kültürün ve sektörel bilginle analiz et. Soruyu mantıklı, ikna edici ve tutarlı bir e-ticaret diliyle kendin cevapla.\n\n";
-
+        $prompt .= "🔵 4. ADIM (YAPAY ZEKA İNİSİYATİFİ - SON ÇARE):\nEğer 2. ve 3. adımlarda (Özel Ürün Bilgisi veya Geçmiş Sorular) sorunun NET bir cevabı YOKSA, genel kültürünle mantıklı bir cevap üret. ANCAK ŞU KESİN YASAKLARA UY:\n";
+        $prompt .= "🚫 YASAK 1: RAG (Ürün Bilgisi) içinde yazmıyorsa ASLA kendi kendine spesifik bir rakam, ölçü (cm, mm, gr), süre veya 'x katına çıkarır' gibi garantiler uydurma.\n";
+        $prompt .= "🚫 YASAK 2: Müşteri net bir sayı/ölçü soruyorsa ve elinde bu veri yoksa, dürüst ve yuvarlak bir dil kullan (Örn: 'İçeriği sayesinde uzamasına yardımcı olur ancak net bir cm/oran verememekteyiz').\n\n";
         $prompt .= "🟣 KESİN KURAL (AKICILIK): Aynı hitap kelimesini (örneğin 'efendim', 'iyi günler') cümlede iki defa asla kullanma. Frankenstein gibi eklenmiş durmasın, doğal bir insanın ağzından çıkmış gibi tek parça ve profesyonel bir metin oluştur.\n\n";
 
         $prompt .= "--- YENİ MÜŞTERİ SORUSU ---\n{$question_text}\n\nCEVAP:";

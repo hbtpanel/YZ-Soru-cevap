@@ -290,30 +290,18 @@ class QualityLife_Admin_Pages {
         <?php
     }
 
-    // --- SAYFA 2: BEKLEYEN SORULAR (BİRLEŞİK PANEL) ---
     public function page_questions() {
         global $wpdb;
         $stores = get_option('ql_trendyol_stores', []);
-        
-        // Varsayılan olarak 'all' (Tüm Mağazalar) seçili gelsin
         $selected_seller_id = isset($_GET['store_id']) ? sanitize_text_field($_GET['store_id']) : 'all';
 
         $all_questions = [];
-        
-        // Mağazaları döngüye al ve soruları topla
-       foreach($stores as $sid => $s) {
-            // Eğer bir mağaza filtresi varsa ve o anki mağaza o değilse atla
-            if ($selected_seller_id !== 'all' && $selected_seller_id !== $sid) {
-                continue;
-            }
-            
-            // DÜZELTME: Şifreli API Secret'ı önce çözüyoruz
+        foreach($stores as $sid => $s) {
+            if ($selected_seller_id !== 'all' && $selected_seller_id !== $sid) continue;
             $trendyol_secret = QualityLife_API_Services::decrypt_data($s['secret']);
             $qs = QualityLife_API_Services::get_trendyol_questions($sid, $s['key'], $trendyol_secret);
-            
             if (!empty($qs) && is_array($qs)) {
                 foreach($qs as $q) {
-                    // Her soruya ait olduğu mağaza bilgisini enjekte et
                     $q['ql_store_name'] = $s['name'];
                     $q['ql_store_id'] = $sid;
                     $all_questions[] = $q;
@@ -321,41 +309,99 @@ class QualityLife_Admin_Pages {
             }
         }
         ?>
-        <div class="wrap">
-            <style>@keyframes ql-spin { 100% { transform: rotate(360deg); } }</style>
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px;">
-                <h1 style="margin:0;">📥 Bekleyen Trendyol Soruları</h1>
-                
-                <div style="display: flex; align-items: center; gap: 15px;">
-                    <button type="button" id="btn-check-new" class="button button-secondary" data-current="<?php echo count($all_questions); ?>" style="display: flex; align-items: center; gap: 5px; border-radius: 6px;">
-                        <span class="dashicons dashicons-update" style="margin-top: 2px;"></span> Yeni Soru Kontrol Et
+        <style>
+            :root {
+                --ql-primary: #4f46e5; --ql-primary-dark: #4338ca; --ql-success: #10b981; --ql-warning: #f59e0b;
+                --ql-danger: #ef4444; --ql-bg-light: #f8fafc; --ql-border: #e2e8f0; --ql-text-main: #1e293b; --ql-text-muted: #64748b;
+            }
+            .ql-questions-wrap { max-width: 1400px; margin: 20px auto; padding: 0 15px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--ql-text-main); }
+            .ql-header-section { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 30px; flex-wrap: wrap; gap: 20px; }
+            .ql-title-group h1 { margin: 0; font-size: 28px; font-weight: 800; display: flex; align-items: center; gap: 12px; }
+            
+            .ql-top-bar { background: #fff; padding: 15px 25px; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid var(--ql-border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; margin-bottom: 30px; }
+            .ql-action-group { display: flex; gap: 12px; flex-wrap: wrap; }
+
+            /* Grid System */
+            .ql-questions-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 25px; }
+            @media (max-width: 480px) { .ql-questions-grid { grid-template-columns: 1fr; } }
+
+            /* Card Redesign */
+            .ql-question-card { background: #fff; border-radius: 20px; border: 1px solid var(--ql-border); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); overflow: hidden; display: flex; flex-direction: column; transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1); border-left: 6px solid transparent; position: relative; }
+            .ql-question-card:hover { transform: translateY(-5px); box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+
+            .ql-card-header { padding: 20px 25px; border-bottom: 1px solid var(--ql-bg-light); display: flex; justify-content: space-between; align-items: flex-start; }
+            .ql-product-title { margin: 0 0 8px; font-size: 16px; font-weight: 700; line-height: 1.4; color: var(--ql-text-main); padding-right: 60px; }
+            .ql-store-badge { background: #e0e7ff; color: var(--ql-primary); font-size: 10px; font-weight: 800; padding: 4px 10px; border-radius: 20px; white-space: nowrap; position: absolute; top: 20px; right: 20px; }
+
+            .ql-card-body { padding: 25px; flex-grow: 1; }
+            .ql-q-box { background: var(--ql-bg-light); padding: 15px; border-radius: 14px; font-size: 14px; line-height: 1.6; margin-bottom: 20px; position: relative; }
+            .ql-q-label { position: absolute; top: -10px; left: 15px; background: var(--ql-primary); color: #fff; font-size: 9px; font-weight: 900; padding: 2px 8px; border-radius: 6px; text-transform: uppercase; }
+
+            /* Inline RAG */
+            .ql-rag-box { background: #fffbeb; border: 1px solid #fef3c7; border-radius: 14px; padding: 15px; margin-bottom: 20px; }
+            .ql-rag-input-group { display: flex; gap: 8px; margin-top: 8px; }
+            .ql-rag-input { flex: 1; border: 1px solid #fcd34d; border-radius: 10px; padding: 8px 12px; font-size: 13px; background: #fff; }
+            .ql-btn-save { background: #f59e0b; color: #fff; border: none; border-radius: 10px; padding: 0 15px; font-weight: 700; cursor: pointer; }
+
+            /* Score Box */
+            .ql-score-pill { display: none; margin-bottom: 15px; font-size: 12px; font-weight: 800; padding: 8px; border-radius: 10px; text-align: center; }
+
+            .ql-ans-textarea { width: 100%; border: 1.5px solid var(--ql-border); border-radius: 14px; padding: 15px; font-size: 14px; line-height: 1.6; min-height: 110px; background: #fcfcfc; transition: 0.2s; }
+            .ql-ans-textarea:focus { outline: none; border-color: var(--ql-primary); background: #fff; box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.08); }
+
+            .ql-card-footer { padding: 20px 25px; background: var(--ql-bg-light); display: flex; gap: 12px; border-top: 1px solid var(--ql-border); }
+            
+            /* Buttons */
+            .ql-btn-m { cursor: pointer; border-radius: 12px; font-weight: 700; font-size: 13px; padding: 12px 20px; display: inline-flex; align-items: center; gap: 8px; transition: 0.2s; border: none; }
+            .ql-btn-p { background: var(--ql-primary); color: #fff; }
+            .ql-btn-p:hover { background: var(--ql-primary-dark); transform: translateY(-2px); }
+            .ql-btn-s { background: #fff; color: var(--ql-text-main); border: 1px solid var(--ql-border); }
+            .ql-btn-s:hover { background: var(--ql-bg-light); }
+            
+            @keyframes ql-spin { 100% { transform: rotate(360deg); } }
+            .ql-spin { animation: ql-spin 1s linear infinite; }
+        </style>
+
+        <div class="ql-questions-wrap">
+            <div class="ql-header-section">
+                <div class="ql-title-group">
+                    <h1>📥 Bekleyen Sorular</h1>
+                    <p>Müşterilerinizden gelen yanıt bekleyen mesajları buradan yönetin.</p>
+                </div>
+            </div>
+
+            <div class="ql-top-bar">
+                <div class="ql-action-group">
+                    <button type="button" id="btn-check-new" class="ql-btn-m ql-btn-s" data-current="<?php echo count($all_questions); ?>">
+                        <span class="dashicons dashicons-update"></span> Kontrol Et
                     </button>
+                    <?php if(!empty($all_questions)): ?>
+                        <button type="button" id="btn-ask-all" class="ql-btn-m ql-btn-p" style="background:#6366f1;">
+                            <span class="dashicons dashicons-marker"></span> Tümünü YZ Hazırla
+                        </button>
+                    <?php endif; ?>
+                </div>
+                
                 <form method="get" action="">
                     <input type="hidden" name="page" value="ql-ai-questions">
-                    <select name="store_id" onchange="this.form.submit()" style="padding: 5px; font-size: 14px; border-radius: 4px;">
-                        <option value="all" <?php selected($selected_seller_id, 'all'); ?>>🌐 Tüm Mağazalar</option>
+                    <select name="store_id" onchange="this.form.submit()" class="ql-btn-m ql-btn-s" style="padding: 8px 15px;">
+                        <option value="all">🌐 Tüm Mağazalar</option>
                         <?php foreach($stores as $id => $store): ?>
                             <option value="<?php echo esc_attr($id); ?>" <?php selected($selected_seller_id, $id); ?>>🏪 <?php echo esc_html($store['name']); ?></option>
                         <?php endforeach; ?>
                     </select>
                 </form>
             </div>
-            <hr>
 
             <?php if(empty($all_questions)): ?>
-                <div class="notice notice-info"><p>Şu an yanıtlanmayı bekleyen soru bulunmuyor.</p></div>
-            <?php else: ?>
-                
-                <div style="margin: 20px 0; padding: 20px; background: #fff; border-left: 4px solid #6a1b9a; border-radius: 4px; box-shadow: 0 1px 1px rgba(0,0,0,.04); display: flex; align-items: center; gap: 20px;">
-                    <div>
-                        <h3 style="margin: 0 0 5px 0;">🤖 Otomatik YZ Asistanı</h3>
-                        <p style="margin: 0; color: #666;">Listedeki <strong><?php echo count($all_questions); ?></strong> sorunun tamamı için taslak cevapları hazırlatın.</p>
-                    </div>
-                    <button type="button" class="button button-primary button-large" id="btn-ask-all" style="background: #6a1b9a; border-color: #4a148c;">✨ Tümüne YZ Cevabı Üret</button>
-                    <span id="ask-all-status" style="font-weight: bold; color: #6a1b9a;"></span>
+                <div style="text-align:center; padding: 100px 20px; background:#fff; border-radius:30px; border: 2px dashed var(--ql-border);">
+                    <div style="font-size:50px; margin-bottom:20px;">🎉</div>
+                    <h2 style="margin:0; color:var(--ql-text-main);">Tebrikler! Bekleyen soru yok.</h2>
+                    <p style="color:var(--ql-text-muted);">Yeni sorular geldiğinde burada görünecekler.</p>
                 </div>
-
-                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 20px; margin-top: 20px;">
+            <?php else: ?>
+                <div id="ask-all-status" style="margin-bottom:15px; font-weight:bold; color:var(--ql-primary);"></div>
+                <div class="ql-questions-grid">
                     <?php 
                     $table_knowledge = $wpdb->prefix . 'ql_product_knowledge';
                     foreach($all_questions as $q): 
@@ -363,170 +409,175 @@ class QualityLife_Admin_Pages {
                         $text = esc_html($q['text']);
                         $product_name = esc_html($q['productName']);
                         $barcode = isset($q['productMainId']) ? esc_attr($q['productMainId']) : '';
-                        $store_name = esc_html($q['ql_store_name']);
                         $store_id = esc_attr($q['ql_store_id']);
-                        
                         $rag_rule = $wpdb->get_var($wpdb->prepare("SELECT product_info FROM {$table_knowledge} WHERE barcode = %s", $barcode));
                     ?>
-                    <div class="ql-card" id="card_<?php echo $q_id; ?>" style="background: #fff; padding: 15px; border: 1px solid #ccd0d4; border-radius: 6px; position: relative; transition: 0.3s;">
-                        <div style="position: absolute; top: 10px; right: 10px;">
-                            <span style="background: #f0f6fc; color: #2271b1; padding: 3px 10px; border-radius: 15px; font-size: 10px; font-weight: bold; border: 1px solid #2271b1;">🏪 <?php echo $store_name; ?></span>
+                    <div class="ql-question-card" id="card_<?php echo $q_id; ?>">
+                        <div class="ql-card-header">
+                            <div class="ql-product-info">
+                                <h4 class="ql-product-title"><?php echo $product_name; ?></h4>
+                                <span class="ql-model-badge">Model: <?php echo $barcode; ?></span>
+                            </div>
+                            <span class="ql-store-badge"><?php echo esc_html($q['ql_store_name']); ?></span>
                         </div>
 
-                        <h4 style="margin: 0 0 5px 0; padding-right: 100px;"><?php echo $product_name; ?></h4>
-                        <span style="background: #eee; padding: 2px 6px; border-radius: 3px; font-size: 11px;">Model: <?php echo $barcode; ?></span>
-                        
-                        <div style="background: #f0f6fc; border-left: 4px solid #2271b1; padding: 10px; margin: 10px 0; font-size: 14px;">
-                            <strong>Soru:</strong> <?php echo $text; ?>
-                        </div>
-                        
-                        <div style="background: #fff8e1; border-left: 3px solid #ffc107; padding: 8px; margin-bottom: 10px; border-radius: 4px;">
-                            <div style="font-size: 10px; font-weight: bold; color: #b48600; margin-bottom: 3px; display:flex; justify-content:space-between;">
-                                <span>🧠 ANINDA ÜRÜN KURALI (RAG)</span>
-                                <span id="rag_status_<?php echo $q_id; ?>"></span>
+                        <div class="ql-card-body">
+                            <div class="ql-q-box">
+                                <span class="ql-q-label">Soru</span>
+                                <?php echo $text; ?>
                             </div>
-                            <div style="display:flex; gap:5px;">
-                                <input type="text" id="rag_<?php echo $q_id; ?>" style="flex:1; font-size: 12px; padding: 4px 8px; border: 1px solid #ffe082;" placeholder="Bu ürüne özel bir not girin..." value="<?php echo esc_attr($rag_rule); ?>">
-                                <button type="button" class="button btn-save-rag" data-barcode="<?php echo $barcode; ?>" data-id="<?php echo $q_id; ?>" style="padding: 0 10px; min-height: 0; line-height: 2;">Kaydet</button>
+
+                           <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                                <button type="button" class="ql-btn-m ql-btn-s" onclick="document.getElementById('rag_container_<?php echo $q_id; ?>').style.display = document.getElementById('rag_container_<?php echo $q_id; ?>').style.display === 'none' ? 'block' : 'none'" style="font-size: 11px; padding: 6px 12px;">🧠 Bilgi Düzenle</button>
+                                <button type="button" class="ql-btn-m ql-btn-s" onclick="document.getElementById('note_container_<?php echo $q_id; ?>').style.display = document.getElementById('note_container_<?php echo $q_id; ?>').style.display === 'none' ? 'block' : 'none'" style="font-size: 11px; padding: 6px 12px; border-color: #cbd5e1; background: #f1f5f9;">💡 Özel Not Ekle</button>
                             </div>
+
+                            <div class="ql-rag-box" id="rag_container_<?php echo $q_id; ?>" style="display: none;">
+                                <div style="display:flex; justify-content:space-between; align-items:center;">
+                                    <span style="font-size:10px; font-weight:900; color:#92400e; text-transform:uppercase;">🧠 Ürün Bilgisi (Hafıza)</span>
+                                    <span id="rag_status_<?php echo $q_id; ?>" style="font-size:10px; font-weight:bold; color:var(--ql-success);"></span>
+                                </div>
+                                <div class="ql-rag-input-group">
+                                    <input type="text" id="rag_<?php echo $q_id; ?>" class="ql-rag-input" value="<?php echo esc_attr($rag_rule); ?>" placeholder="Kalıcı kural girin...">
+                                    <button type="button" class="ql-btn-save btn-save-rag" data-barcode="<?php echo $barcode; ?>" data-id="<?php echo $q_id; ?>">💾</button>
+                                </div>
+                            </div>
+
+                            <div id="note_container_<?php echo $q_id; ?>" style="display: none; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 12px; padding: 12px; margin-bottom: 15px;">
+                                <label style="font-size: 10px; font-weight: 800; color: #0369a1; display: block; margin-bottom: 5px;">💡 BU SORUYA ÖZEL NOT (Hafızaya eklenir)</label>
+                                <textarea id="note_<?php echo $q_id; ?>" style="width: 100%; border: 1px solid #7dd3fc; border-radius: 8px; font-size: 12px; padding: 8px;" rows="2" placeholder="Örn: Bu ürün kedi için uygun değildir de."></textarea>
+                            </div>
+
+                            <div id="score_box_<?php echo $q_id; ?>" class="ql-score-pill"></div>
+                            <textarea id="ans_<?php echo $q_id; ?>" class="ql-ans-textarea" placeholder="Yapay zeka cevabı hazırlayın..."></textarea>
                         </div>
 
-                        <div id="score_box_<?php echo $q_id; ?>" style="display:none; margin-bottom:5px; font-size: 11px; font-weight: bold; padding: 4px 8px; border-radius: 4px;"></div>
-                        <textarea id="ans_<?php echo $q_id; ?>" rows="4" style="width: 100%; margin-bottom: 10px; font-size: 13px;" placeholder="Yapay zeka cevabı..."></textarea>
-                        
-                        <div style="display: flex; justify-content: space-between;">
-                            <button type="button" class="button btn-ask" data-id="<?php echo $q_id; ?>" data-barcode="<?php echo $barcode; ?>" data-q="<?php echo esc_attr($text); ?>" data-store="<?php echo $store_id; ?>">✨ YZ Hazırla</button>
-                            <button type="button" class="button button-primary btn-send" data-id="<?php echo $q_id; ?>" data-store="<?php echo $store_id; ?>" data-barcode="<?php echo $barcode; ?>" data-q="<?php echo esc_attr($text); ?>" data-pname="<?php echo esc_attr($product_name); ?>">🚀 Gönder & Öğren</button>
+                        <div class="ql-card-footer">
+                            <button type="button" class="ql-btn-m ql-btn-s btn-ask" style="flex:1; justify-content:center;" 
+                                data-id="<?php echo $q_id; ?>" data-barcode="<?php echo $barcode; ?>" data-q="<?php echo esc_attr($text); ?>" data-store="<?php echo $store_id; ?>">
+                                ✨ Hazırla
+                            </button>
+                            <button type="button" class="ql-btn-m ql-btn-p btn-send" style="flex:1.5; justify-content:center;" 
+                                data-id="<?php echo $q_id; ?>" data-store="<?php echo $store_id; ?>" data-barcode="<?php echo $barcode; ?>" data-q="<?php echo esc_attr($text); ?>" data-pname="<?php echo esc_attr($product_name); ?>">
+                                🚀 Gönder
+                            </button>
                         </div>
                     </div>
                     <?php endforeach; ?>
                 </div>
-                
             <?php endif; ?>
         </div>
 
         <script>
         document.addEventListener('DOMContentLoaded', function() {
-           const nonce = '<?php echo wp_create_nonce("ql_ajax_nonce"); ?>';
-            
-            // YENİ SORU KONTROL BUTONU JS
-            const btnCheckNew = document.getElementById('btn-check-new');
-            if (btnCheckNew) {
-                btnCheckNew.addEventListener('click', async function() {
-                    const originalHTML = this.innerHTML;
-                    this.innerHTML = '<span class="dashicons dashicons-update" style="margin-top: 2px; animation: ql-spin 1s linear infinite;"></span> Kontrol ediliyor...';
-                    this.disabled = true;
+            const nonce = '<?php echo wp_create_nonce("ql_ajax_nonce"); ?>';
 
-                    const fd = new FormData();
-                    fd.append('action', 'ql_check_waiting_questions');
-                    fd.append('security', nonce);
-                    const urlParams = new URLSearchParams(window.location.search);
-                    fd.append('store_id', urlParams.get('store_id') || 'all');
-
-                    try {
-                        const res = await fetch(ajaxurl, { method: 'POST', body: fd });
-                        const data = await res.json();
-                        
-                        if (data.success) {
-                            const newCount = data.data.count;
-                            const currentCount = parseInt(this.dataset.current);
-                            
-                            if (newCount > currentCount) {
-                                this.innerHTML = `🎉 ${newCount - currentCount} Yeni Soru! Yenileniyor...`;
-                                this.style.backgroundColor = '#dcfce7'; this.style.borderColor = '#166534'; this.style.color = '#166534';
-                                setTimeout(() => window.location.reload(), 1000);
-                            } else if (newCount < currentCount) {
-                                this.innerHTML = `🔄 Liste Güncelleniyor...`;
-                                setTimeout(() => window.location.reload(), 1000);
-                            } else {
-                                this.innerHTML = '✅ Yeni Soru Yok';
-                                setTimeout(() => { this.innerHTML = originalHTML; this.disabled = false; }, 2000);
-                            }
-                        }
-                    } catch (e) {
-                        alert('Bağlantı hatası.');
-                        this.innerHTML = originalHTML; this.disabled = false;
-                    }
-                });
-            }
-
-            // Trafik Lambası Fonksiyonu
+            // Trafik Lambası
             function updateScoreUI(id, score) {
                 const box = document.getElementById('score_box_' + id);
                 const card = document.getElementById('card_' + id);
-                box.style.display = 'inline-block';
+                box.style.display = 'block';
                 if(score >= 0.85) {
-                    box.style.background = '#dcfce7'; box.style.color = '#166534'; box.innerHTML = '🟢 %' + Math.round(score*100) + ' Mükemmel Uyum (Altın)';
-                    card.style.borderColor = '#22c55e'; card.style.boxShadow = '0 0 10px rgba(34,197,94,0.2)';
+                    box.style.background = '#dcfce7'; box.style.color = '#166534'; box.innerHTML = '🟢 %' + Math.round(score*100) + ' Uyum (Altın)';
+                    card.style.borderColor = '#10b981';
                 } else if(score >= 0.60) {
-                    box.style.background = '#fef08a'; box.style.color = '#854d0e'; box.innerHTML = '🟡 %' + Math.round(score*100) + ' Benzer Soru Bulundu';
-                    card.style.borderColor = '#eab308';
+                    box.style.background = '#fef3c7'; box.style.color = '#92400e'; box.innerHTML = '🟡 %' + Math.round(score*100) + ' Orta Derece Uyum';
+                    card.style.borderColor = '#f59e0b';
                 } else {
-                    box.style.background = '#fee2e2'; box.style.color = '#991b1b'; box.innerHTML = '🔴 %' + Math.round(score*100) + ' Düşük Uyum (Dikkatli Oku)';
+                    box.style.background = '#fee2e2'; box.style.color = '#991b1b'; box.innerHTML = '🔴 %' + Math.round(score*100) + ' Düşük Uyum (Kontrol Et)';
                     card.style.borderColor = '#ef4444';
                 }
             }
 
-            // Anında RAG Eğitimi Kaydetme
+            // Yeni Soru Kontrolü
+            const btnCheckNew = document.getElementById('btn-check-new');
+            if (btnCheckNew) {
+                btnCheckNew.addEventListener('click', async function() {
+                    const originalHTML = this.innerHTML;
+                    this.innerHTML = '<span class="dashicons dashicons-update ql-spin"></span>';
+                    this.disabled = true;
+                    try {
+                        const fd = new FormData(); fd.append('action', 'ql_check_waiting_questions'); fd.append('security', nonce);
+                        const res = await fetch(ajaxurl, { method: 'POST', body: fd });
+                        const data = await res.json();
+                        if (data.success && data.data.count != this.dataset.current) location.reload();
+                        else { this.innerHTML = '✅ Sorular Güncel'; setTimeout(() => { this.innerHTML = originalHTML; this.disabled = false; }, 2000); }
+                    } catch (e) { this.innerHTML = originalHTML; this.disabled = false; }
+                });
+            }
+
+            // Toplu Bot (Trafik Lambası Uyumlu)
+            const btnAskAll = document.getElementById('btn-ask-all');
+            if (btnAskAll) {
+                btnAskAll.addEventListener('click', async function() {
+                    const buttons = document.querySelectorAll('.btn-ask');
+                    const statusLabel = document.getElementById('ask-all-status');
+                    if(!confirm(buttons.length + ' soru için YZ cevabı üretilecek. Devam edilsin mi?')) return;
+                    this.disabled = true;
+                    for(let i = 0; i < buttons.length; i++) {
+                        const btn = buttons[i];
+                        statusLabel.innerHTML = `⏳ ${i + 1} / ${buttons.length} hazırlanıyor...`;
+                        const id = btn.dataset.id; const box = document.getElementById('ans_' + id);
+                        if (box.value.trim() !== '') continue;
+                        btn.disabled = true;
+                        try {
+                            const fd = new FormData(); fd.append('action', 'ql_ask_ai'); fd.append('security', nonce);
+                            fd.append('question', btn.dataset.q); fd.append('barcode', btn.dataset.barcode); fd.append('store_id', btn.dataset.store);
+                            const res = await fetch(ajaxurl, { method: 'POST', body: fd });
+                            const data = await res.json();
+                            if(data.success) { box.value = data.data.answer; updateScoreUI(id, data.data.score); }
+                        } catch (e) {}
+                        btn.disabled = false;
+                        if (i < buttons.length - 1) await new Promise(r => setTimeout(r, 4000));
+                    }
+                    statusLabel.innerHTML = '✅ Tüm taslaklar hazır.'; this.disabled = false;
+                });
+            }
+
+            // Kaydet (RAG)
             document.querySelectorAll('.btn-save-rag').forEach(btn => {
                 btn.addEventListener('click', async function() {
-                    const id = this.dataset.id;
-                    const barcode = this.dataset.barcode;
-                    const info = document.getElementById('rag_' + id).value;
-                    const status = document.getElementById('rag_status_' + id);
-                    
-                    this.disabled = true; status.innerHTML = '⏳...';
-                    const fd = new FormData();
-                    fd.append('action', 'ql_save_product_rule'); fd.append('security', nonce);
-                    fd.append('barcode', barcode); fd.append('info', info);
-
+                    const id = this.dataset.id; const status = document.getElementById('rag_status_' + id);
+                    this.disabled = true;
+                    const fd = new FormData(); fd.append('action', 'ql_save_product_rule'); fd.append('security', nonce);
+                    fd.append('barcode', this.dataset.barcode); fd.append('info', document.getElementById('rag_' + id).value);
                     await fetch(ajaxurl, { method: 'POST', body: fd });
-                    this.disabled = false; status.innerHTML = '✅ Kaydedildi';
+                    status.innerHTML = 'KAYDEDİLDİ'; this.disabled = false;
                     setTimeout(() => status.innerHTML = '', 2000);
                 });
             });
 
-            // Tekil YZ Hazırlama
+            // Tekil Hazırla
             document.querySelectorAll('.btn-ask').forEach(btn => {
                 btn.addEventListener('click', async function() {
                     const id = this.dataset.id; const box = document.getElementById('ans_' + id);
-                    this.disabled = true; this.innerHTML = '⏳...';
-                    const fd = new FormData();
-                    fd.append('action', 'ql_ask_ai'); fd.append('security', nonce); 
+                    const originalText = this.innerHTML; this.disabled = true; this.innerHTML = '⏳...';
+                    const fd = new FormData(); fd.append('action', 'ql_ask_ai'); fd.append('security', nonce);
                     fd.append('question', this.dataset.q); fd.append('barcode', this.dataset.barcode); fd.append('store_id', this.dataset.store);
+                    fd.append('quick_note', document.getElementById('note_' + id).value);
                     try {
                         const res = await fetch(ajaxurl, { method: 'POST', body: fd });
                         const data = await res.json();
-                        box.value = data.success ? data.data.answer : 'Hata.';
-                        if(data.success) updateScoreUI(id, data.data.score);
-                    } catch (e) { box.value = 'Hata.'; }
-                    this.disabled = false; this.innerHTML = '✨ Yeniden Hazırla';
+                        if(data.success) { box.value = data.data.answer; updateScoreUI(id, data.data.score); }
+                    } catch (e) {}
+                    this.disabled = false; this.innerHTML = originalText;
                 });
             });
 
-            // Gönder ve Sessiz Öğren
+            // Gönder
             document.querySelectorAll('.btn-send').forEach(btn => {
                 btn.addEventListener('click', async function() {
-                    const id = this.dataset.id; 
-                    const answer = document.getElementById('ans_' + id).value.trim();
-                    if(!answer) return alert('Cevap boş olamaz!');
-                    
-                    this.disabled = true; this.innerHTML = '🚀 Gönderiliyor...';
-                    const fd = new FormData();
-                    fd.append('action', 'ql_send_answer'); fd.append('security', nonce); 
+                    const id = this.dataset.id; const answer = document.getElementById('ans_' + id).value.trim();
+                    if(!answer) return alert('Cevap boş!');
+                    this.disabled = true; this.innerHTML = '🚀...';
+                    const fd = new FormData(); fd.append('action', 'ql_send_answer'); fd.append('security', nonce);
                     fd.append('q_id', id); fd.append('answer', answer); fd.append('store_id', this.dataset.store);
-                    
-                    // Auto-Golden için gereken ekstra veriler
                     fd.append('q_text', this.dataset.q); fd.append('barcode', this.dataset.barcode); fd.append('p_name', this.dataset.pname);
-                    
                     try {
                         const res = await fetch(ajaxurl, { method: 'POST', body: fd });
                         const data = await res.json();
-                        if(data.success) { 
-                            this.closest('.ql-card').style.opacity = '0.3'; 
-                            this.innerHTML = '✅ Gönderildi & Öğrenildi'; 
-                        } else alert('Hata oluştu.');
-                    } catch (e) { alert('Bağlantı hatası.'); }
+                        if(data.success) { this.closest('.ql-question-card').style.opacity = '0.3'; this.innerHTML = '✅ Gönderildi'; }
+                    } catch (e) {}
                 });
             });
         });

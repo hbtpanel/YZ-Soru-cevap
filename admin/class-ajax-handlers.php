@@ -18,11 +18,27 @@ class QualityLife_AJAX_Handlers {
 
    public function ajax_ask_ai() {
         check_ajax_referer('ql_ajax_nonce', 'security');
-        $question = sanitize_textarea_field($_POST['question']);
-        $barcode = sanitize_text_field($_POST['barcode']);
-        $store_id = isset($_POST['store_id']) ? sanitize_text_field($_POST['store_id']) : '';
+        global $wpdb;
+        $question   = sanitize_textarea_field($_POST['question']);
+        $barcode    = sanitize_text_field($_POST['barcode']);
+        $store_id   = isset($_POST['store_id']) ? sanitize_text_field($_POST['store_id']) : '';
+        $quick_note = isset($_POST['quick_note']) ? sanitize_textarea_field($_POST['quick_note']) : '';
         
-        $ans = QualityLife_API_Services::ask_gemini_with_vector($question, $barcode, $store_id);
+        // OTOMATİK RAG GÜNCELLEME: Eğer not varsa kalıcı hafızaya ekle
+        if (!empty($quick_note)) {
+            $table = $wpdb->prefix . 'ql_product_knowledge';
+            $current_info = $wpdb->get_var($wpdb->prepare("SELECT product_info FROM $table WHERE barcode = %s", $barcode));
+            $new_info = $current_info ? $current_info . "\n" . $quick_note : $quick_note;
+            
+            $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM $table WHERE barcode = %s", $barcode));
+            if($exists) {
+                $wpdb->update($table, ['product_info' => $new_info], ['barcode' => $barcode]);
+            } else {
+                $wpdb->insert($table, ['barcode' => $barcode, 'product_info' => $new_info]);
+            }
+        }
+
+        $ans = QualityLife_API_Services::ask_gemini_with_vector($question, $barcode, $store_id, $quick_note);
         
         if (is_array($ans)) {
             wp_send_json_success(['answer' => $ans['text'], 'score' => $ans['score']]);
