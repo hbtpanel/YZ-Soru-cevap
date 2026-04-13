@@ -360,12 +360,22 @@ class QualityLife_Admin_Pages {
             
             @keyframes ql-spin { 100% { transform: rotate(360deg); } }
             .ql-spin { animation: ql-spin 1s linear infinite; }
+            /* Yeni Soru Animasyonu */
+    @keyframes dikkatCek {
+        0%   { background-color: #d4edda; transform: scale(1.01); border-left: 5px solid #28a745; box-shadow: 0px 0px 15px rgba(40, 167, 69, 0.4); }
+        50%  { background-color: #d4edda; transform: scale(1.01); }
+        100% { background-color: #fff; transform: scale(1); border-left: 1px solid var(--ql-border); }
+    }
+    .yeni-soru-animasyonu {
+        animation: dikkatCek 3s ease-out forwards;
+    }
         </style>
 
         <div class="ql-questions-wrap">
             <div class="ql-header-section">
                 <div class="ql-title-group">
                     <h1>📥 Bekleyen Sorular</h1>
+                    <audio id="ql-bildirim-sesi" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto"></audio>
                     <p>Müşterilerinizden gelen yanıt bekleyen mesajları buradan yönetin.</p>
                 </div>
             </div>

@@ -68,7 +68,7 @@ class QualityLife_AJAX_Handlers {
             $barcode = sanitize_text_field($_POST['barcode'] ?? '');
             $p_name = sanitize_text_field($_POST['p_name'] ?? '');
             
-            if (!empty($q_text)) {
+           if (!empty($q_text)) {
                 $combined_text = "Soru: " . $q_text . " Cevap: " . $answer;
                 $vector_data = QualityLife_API_Services::get_text_embedding($combined_text);
                 $vector_json = isset($vector_data['values']) ? wp_json_encode($vector_data['values']) : null;
@@ -86,6 +86,11 @@ class QualityLife_AJAX_Handlers {
                     'is_golden'     => 1 // Otomatik Altın Kural!
                 ]);
             }
+            
+            // CEVAP GÖNDERİLDİĞİNDE: Tüm ekranlarda verinin anında güncellenmesi için kalkanı parçala!
+            delete_transient('ql_waiting_qs_cache_all');
+            delete_transient('ql_waiting_qs_cache_' . $store_id);
+            
             wp_send_json_success();
         } else {
             wp_send_json_error();
@@ -453,19 +458,51 @@ class QualityLife_AJAX_Handlers {
 
         wp_send_json_success($msg);
     }
-    public function ajax_check_waiting_questions() {
+   public function ajax_check_waiting_questions() {
         check_ajax_referer('ql_ajax_nonce', 'security');
-        $stores = get_option('ql_trendyol_stores', []);
+        
+        // 1. Manuel buton kontrolü ve Filtreleme
+        $force_refresh = isset($_POST['force_refresh']) && $_POST['force_refresh'] === 'true';
         $store_id_filter = isset($_POST['store_id']) ? sanitize_text_field($_POST['store_id']) : 'all';
         
-        $total_waiting = 0;
-        foreach($stores as $sid => $s) {
-            if ($store_id_filter !== 'all' && $store_id_filter !== $sid) continue;
-            $trendyol_secret = QualityLife_API_Services::decrypt_data($s['secret']);
-            $qs = QualityLife_API_Services::get_trendyol_questions($sid, $s['key'], $trendyol_secret);
-            if (is_array($qs)) $total_waiting += count($qs);
+        // Kalkanın adını mağazaya göre dinamik yapıyoruz (Karışmaması için)
+        $cache_key = 'ql_waiting_qs_cache_' . $store_id_filter;
+
+        if ( $force_refresh ) {
+            delete_transient($cache_key);
         }
-        wp_send_json_success(['count' => $total_waiting]);
+
+        // 2. Kalkanı Kontrol Et (60 saniyelik hafıza)
+        $response_data = get_transient($cache_key);
+
+        if ( false === $response_data ) {
+            // Kalkan boş! Trendyol'a bağlanıyoruz.
+            $stores = get_option('ql_trendyol_stores', []);
+            $total_waiting = 0;
+            $all_questions = []; // Radar (ses) için soruları da alıyoruz
+            
+            foreach($stores as $sid => $s) {
+                if ($store_id_filter !== 'all' && $store_id_filter !== $sid) continue;
+                $trendyol_secret = QualityLife_API_Services::decrypt_data($s['secret']);
+                $qs = QualityLife_API_Services::get_trendyol_questions($sid, $s['key'], $trendyol_secret);
+                
+                if (is_array($qs)) {
+                    $total_waiting += count($qs);
+                    $all_questions = array_merge($all_questions, $qs); // JS tarafı için soruları topla
+                }
+            }
+            
+            // Eski 'count' yapını bozmadan içine 'questions' verisini de ekliyoruz
+            $response_data = [
+                'count' => $total_waiting,
+                'questions' => $all_questions
+            ];
+
+            // Çekilen veriyi 60 saniyeliğine mühürle
+            set_transient($cache_key, $response_data, 60);
+        }
+
+        wp_send_json_success($response_data);
     }
     public function ajax_toggle_golden() {
         check_ajax_referer('ql_ajax_nonce', 'security');
