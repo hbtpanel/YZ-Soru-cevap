@@ -27,6 +27,10 @@ class QualityLife_AI_Core {
             if(empty($has_column)) {
                 $wpdb->query("ALTER TABLE $table ADD vector_data LONGTEXT NULL");
             }
+            $has_barcode = $wpdb->get_results("SHOW COLUMNS FROM $table LIKE 'barcode'");
+            if(empty($has_barcode)) {
+                $wpdb->query("ALTER TABLE $table ADD barcode varchar(100) NULL AFTER model_code");
+            }
         }
 
        // Modülleri Başlat
@@ -69,6 +73,17 @@ class QualityLife_AI_Core {
         require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
         dbDelta( $sql1 );
         dbDelta( $sql2 );
+        $table_logs = $wpdb->prefix . 'ql_api_logs';
+        $sql_logs = "CREATE TABLE $table_logs (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            action_type varchar(50) NOT NULL,
+            tokens_in int(11) DEFAULT 0,
+            tokens_out int(11) DEFAULT 0,
+            cost_usd decimal(10,6) DEFAULT 0.000000,
+            created_at datetime DEFAULT '0000-00-00 00:00:00',
+            PRIMARY KEY  (id)
+        ) $charset_collate;";
+        dbDelta($sql_logs);
     }
 }
 

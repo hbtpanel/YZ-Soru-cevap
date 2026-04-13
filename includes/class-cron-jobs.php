@@ -65,13 +65,16 @@ class QualityLife_Cron_Jobs {
         foreach ($stores as $store_id => $s) {
             if(empty($s['key']) || empty($s['secret'])) continue;
             
+            // DÜZELTME: Cron botu için de şifreyi çözüyoruz
+            $trendyol_secret = QualityLife_API_Services::decrypt_data($s['secret']);
+            
             $page = 0;
             while (true) {
                 // Trendyol'dan durumu SADECE ANSWERED (Cevaplanmış) olan eski soruları çekiyoruz
                 $url = "https://apigw.trendyol.com/integration/qna/sellers/{$store_id}/questions/filter?status=ANSWERED&size=50&page={$page}&startDate={$start_ms}&endDate={$end_ms}";
                 
                 $response = wp_remote_get($url, [
-                    'headers'    => ['Authorization' => 'Basic ' . base64_encode($s['key'] . ':' . $s['secret']), 'Accept' => 'application/json'],
+                    'headers'    => ['Authorization' => 'Basic ' . base64_encode($s['key'] . ':' . $trendyol_secret), 'Accept' => 'application/json'],
                     'user-agent' => $store_id . ' - QLCron',
                     'sslverify'  => false,
                     'timeout'    => 20

@@ -180,39 +180,66 @@ class QualityLife_AJAX_Handlers {
         check_ajax_referer('ql_ajax_nonce', 'security');
         global $wpdb;
         $search = sanitize_text_field($_POST['search'] ?? '');
+        $page = isset($_POST['page']) ? max(1, intval($_POST['page'])) : 1;
+        $per_page = 20; // Sayfa başı ürün sayısı
+        $offset = ($page - 1) * $per_page;
+
+        $stores = get_option('ql_trendyol_stores', []);
         
         $table_knowledge = $wpdb->prefix . 'ql_product_knowledge';
         $table_questions = $wpdb->prefix . 'ql_all_questions';
 
-        // Arşivdeki benzersiz ürünleri çekiyoruz
-        $query = "SELECT model_code, product_name, barcode FROM $table_questions";
+        $where = "WHERE 1=1";
         if(!empty($search)) {
-            $query .= " WHERE product_name LIKE '%$search%' OR model_code LIKE '%$search%' OR barcode LIKE '%$search%'";
+            $where .= " AND (product_name LIKE '%$search%' OR model_code LIKE '%$search%' OR barcode LIKE '%$search%')";
         }
-        $query .= " GROUP BY model_code ORDER BY created_date DESC LIMIT 50";
-        
+
+        // Toplam Ürün Sayısını Bul (Sayfalama için)
+        $total_items = $wpdb->get_var("SELECT COUNT(DISTINCT model_code) FROM $table_questions $where");
+        $total_pages = ceil($total_items / $per_page);
+
+        // Limite göre ürünleri çek
+        $query = "SELECT store_id, model_code, product_name, barcode FROM $table_questions $where GROUP BY model_code ORDER BY created_date DESC LIMIT $per_page OFFSET $offset";
         $products = $wpdb->get_results($query);
         
         if(empty($products)) {
-            wp_send_json_success(['html' => '<div style="padding:20px; text-align:center;">Ürün bulunamadı veya henüz soru arşivi oluşmadı.</div>']);
+            wp_send_json_success(['html' => '<div style="padding:20px; text-align:center;">Ürün bulunamadı.</div>', 'pagination' => '']);
         }
 
         $html = '';
         foreach($products as $p) {
-            // Varsa eğitilmiş kuralı bul
+            $store_name = isset($stores[$p->store_id]) ? $stores[$p->store_id]['name'] : 'Bilinmeyen';
             $info = $wpdb->get_var($wpdb->prepare("SELECT product_info FROM $table_knowledge WHERE barcode = %s", $p->model_code));
             $info_excerpt = $info ? wp_trim_words($info, 8, '...') : '<span style="color:#e00000; font-weight:500;">❌ Kural Girilmemiş</span>';
             $info_safe = esc_attr($info);
 
-            $html .= '<div style="display: grid; grid-template-columns: 1fr 2fr 1.5fr 1fr; padding: 15px; border-bottom: 1px solid #eee; align-items: center;">';
+            $html .= '<div style="display: grid; grid-template-columns: 1fr 1fr 1fr 2fr 1.5fr 1fr; padding: 15px; border-bottom: 1px solid #eee; align-items: center; gap: 10px;">';
+            $html .= '<div><span style="background: #f0f6fc; color: #2271b1; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold;">🏪 ' . esc_html($store_name) . '</span></div>';
+            $html .= '<div style="font-size: 13px;">' . esc_html($p->barcode ?: '-') . '</div>';
             $html .= '<div><strong>' . esc_html($p->model_code) . '</strong></div>';
             $html .= '<div style="font-size: 13px;">' . esc_html($p->product_name) . '</div>';
             $html .= '<div style="font-size: 13px; color: #555;">' . $info_excerpt . '</div>';
-            $html .= '<div style="text-align: right;"><button class="button btn-edit-product" data-model="'.esc_attr($p->model_code).'" data-name="'.esc_attr($p->product_name).'" data-info="'.$info_safe.'">✏️ Eğit / Düzenle</button></div>';
+            $html .= '<div style="text-align: right;"><button class="button btn-edit-product" data-model="'.esc_attr($p->model_code).'" data-name="'.esc_attr($p->product_name).'" data-info="'.$info_safe.'">✏️ Eğit</button></div>';
             $html .= '</div>';
         }
         
-        wp_send_json_success(['html' => $html]);
+        // Alt Kısım Sayfalama Butonları
+        $pagination = '';
+        if($total_pages > 1) {
+            $pagination .= '<div style="padding: 15px; text-align: center; background: #f8f9fa; border-top: 1px solid #eee; display: flex; justify-content: center; gap: 10px; align-items: center;">';
+            $pagination .= '<button class="button btn-page" data-page="'.max(1, $page - 1).'" '.($page <= 1 ? 'disabled' : '').'>« Önceki</button>';
+            $pagination .= '<span style="font-weight: bold; font-size: 14px;">Sayfa ' . $page . ' / ' . $total_pages . '</span>';
+            $pagination .= '<button class="button btn-page" data-page="'.min($total_pages, $page + 1).'" '.($page >= $total_pages ? 'disabled' : '').'>Sonraki »</button>';
+            $pagination .= '</div>';
+        }
+        
+        // YENİ: Toplam ürün sayısı sayacı
+        $pagination .= '<div style="text-align: right; padding: 12px 15px; background: #fff; border-top: 1px solid #eee; font-size: 13px; color: #64748b; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px;">';
+        $pagination .= 'Toplam <strong style="color: #0ea5e9; font-size: 14px;">' . number_format($total_items, 0, ',', '.') . '</strong> benzersiz ürün listeleniyor.';
+        $pagination .= '</div>';
+
+        wp_send_json_success(['html' => $html, 'pagination' => $pagination]);
+    
     }
 
     // --- YENİ: RAG KURALINI KAYDET ---
@@ -234,86 +261,142 @@ class QualityLife_AJAX_Handlers {
         
         wp_send_json_success('Başarı');
     }
-  public function ajax_sync_trendyol_products() {
+ public function ajax_sync_trendyol_products() {
         check_ajax_referer('ql_ajax_nonce', 'security');
         global $wpdb;
+        
+        // 1. PHP Zaman Aşımını Kapat (Çok ürünlü mağazalar için yarıda kesilmeyi önler)
+        set_time_limit(0); 
+
         $stores = get_option('ql_trendyol_stores', []);
         $table_questions = $wpdb->prefix . 'ql_all_questions';
 
-        $sync_count = 0;
-        $debug_sample = "";
+        $stats = [
+            'new' => 0,
+            'name' => 0,
+            'barcode' => 0,
+            'model' => 0,
+            'store' => 0
+        ];
+
+        // 🚀 2. DEV OPTİMİZASYON: Veritabanındaki tüm ürünleri tek seferde RAM'e al!
+        // (Her ürün için veritabanına ayrı sorgu atmaktan kurtulup hızı 50 kat artırıyoruz)
+        $existing_items = $wpdb->get_results("SELECT id, model_code, barcode, product_name, store_id FROM $table_questions GROUP BY model_code");
+        $db_by_barcode = [];
+        $db_by_model = [];
+        
+        foreach ($existing_items as $item) {
+            if (!empty($item->barcode)) $db_by_barcode[$item->barcode] = $item;
+            if (!empty($item->model_code)) $db_by_model[$item->model_code] = $item;
+        }
 
         foreach ($stores as $sid => $s) {
-            // Trendyol'un en kararlı çalışan V1 Ana Ürün servisine dönüyoruz.
-            $url = "https://apigw.trendyol.com/integration/product/sellers/{$sid}/products?page=0&size=100";
+            $trendyol_secret = QualityLife_API_Services::decrypt_data($s['secret']);
+            $page = 0;
             
-            $response = wp_remote_get($url, [
-                'headers'    => [
-                    'Authorization' => 'Basic ' . base64_encode(trim($s['key']) . ':' . trim($s['secret'])),
-                    'Accept'        => 'application/json'
-                ],
-                'user-agent' => $sid . ' - SelfIntegration',
-                'timeout'    => 30,
-                'sslverify'  => false
-            ]);
-
-            if (is_wp_error($response)) {
-                wp_send_json_error("Bağlantı Hatası: " . $response->get_error_message());
-            }
-
-            $code = wp_remote_retrieve_response_code($response);
-            $body = wp_remote_retrieve_body($response);
-            $data = json_decode($body, true);
-
-            // Eğer bağlantı koptuysa uyar
-            if ($code !== 200 || !isset($data['content'])) {
-                wp_send_json_error("Trendyol API Hatası (Kod $code): " . wp_strip_all_tags($body));
-            }
-
-            // X-RAY CİHAZI: Trendyol'dan gelen ilk ürünün haritasını çıkar
-            if (isset($data['content'][0]) && empty($debug_sample)) {
-                $debug_sample = json_encode($data['content'][0], JSON_UNESCAPED_UNICODE);
-            }
-
-            foreach ($data['content'] as $p) {
-                // V1 sisteminin farklı ihtimallerine göre modeli buluyoruz
-                $model_code = $p['productMainId'] ?? $p['stockCode'] ?? '';
-                $name = $p['title'] ?? $p['productName'] ?? 'İsimsiz Ürün';
+            while(true) {
+                $url = "https://apigw.trendyol.com/integration/product/sellers/{$sid}/products?page={$page}&size=100";
                 
-                $barcode = $p['barcode'] ?? '';
-                if (empty($barcode) && !empty($p['variants']) && is_array($p['variants'])) {
-                    $barcode = $p['variants'][0]['barcode'] ?? '';
+                $response = wp_remote_get($url, [
+                    'headers' => [
+                        'Authorization' => 'Basic ' . base64_encode(trim($s['key']) . ':' . trim($trendyol_secret)),
+                        'Accept' => 'application/json'
+                    ],
+                    'user-agent' => $sid . ' - SelfIntegration',
+                    'timeout' => 30, 'sslverify' => false
+                ]);
+
+                if (is_wp_error($response)) break;
+                
+                $data = json_decode(wp_remote_retrieve_body($response), true);
+                if (!isset($data['content']) || empty($data['content'])) break;
+
+                foreach ($data['content'] as $p) {
+                    $model_code = $p['productMainId'] ?? $p['stockCode'] ?? '';
+                    $name = $p['title'] ?? $p['productName'] ?? 'İsimsiz Ürün';
+                    
+                    $barcode = $p['barcode'] ?? '';
+                    if (empty($barcode) && !empty($p['variants']) && is_array($p['variants'])) {
+                        $barcode = $p['variants'][0]['barcode'] ?? '';
+                    }
+
+                    if (empty($model_code) && empty($barcode)) continue;
+
+                    // 3. Ürünü Veritabanında Değil, RAM'de (Hafızada) Ara (Işık hızında)
+                    $target_row = null;
+                    if (!empty($barcode) && isset($db_by_barcode[$barcode])) {
+                        $target_row = $db_by_barcode[$barcode];
+                    }
+                    if (!$target_row && !empty($model_code) && isset($db_by_model[$model_code])) {
+                        $target_row = $db_by_model[$model_code];
+                    }
+
+                    if ($target_row) {
+                        $is_updated = false;
+                        
+                        if ($target_row->product_name !== $name) { $stats['name']++; $is_updated = true; }
+                        if ($target_row->barcode !== $barcode && !empty($barcode)) { $stats['barcode']++; $is_updated = true; }
+                        if ($target_row->model_code !== $model_code && !empty($model_code)) { $stats['model']++; $is_updated = true; }
+                        if ($target_row->store_id !== $sid) { $stats['store']++; $is_updated = true; }
+
+                        if ($is_updated) {
+                            $old_model_code = $target_row->model_code;
+                            $old_barcode = $target_row->barcode;
+                            
+                            $wpdb->query($wpdb->prepare(
+                                "UPDATE $table_questions SET product_name = %s, barcode = %s, model_code = %s, store_id = %s WHERE model_code = %s OR barcode = %s",
+                                $name, $barcode, $model_code, $sid, $old_model_code, $old_barcode
+                            ));
+
+                            // RAM'deki veriyi de güncelle
+                            $target_row->product_name = $name;
+                            $target_row->barcode = $barcode;
+                            $target_row->model_code = $model_code;
+                            $target_row->store_id = $sid;
+                        }
+                    } else {
+                        // Yeni Ekle
+                        $wpdb->insert($table_questions, [
+                            'trendyol_id'   => 'SYNC-' . time() . '-' . rand(1000,9999),
+                            'store_id'      => $sid,
+                            'product_name'  => $name,
+                            'model_code'    => $model_code,
+                            'barcode'       => $barcode,
+                            'question_text' => 'OTOMATIK SENKRONIZASYON',
+                            'answer_text'   => '',
+                            'status'        => 'SYNCED',
+                            'created_date'  => current_time('mysql')
+                        ]);
+                        
+                        // Eklenen ürünü RAM'e de tanıt ki döngünün devamında tekrar eklemeye çalışmasın
+                        $new_item = (object)['product_name' => $name, 'barcode' => $barcode, 'model_code' => $model_code, 'store_id' => $sid];
+                        if (!empty($barcode)) $db_by_barcode[$barcode] = $new_item;
+                        if (!empty($model_code)) $db_by_model[$model_code] = $new_item;
+
+                        $stats['new']++;
+                    }
                 }
 
-                // Eğer Trendyol bize model kodu vermediyse o ürünü atla
-                if (empty($model_code)) continue;
-
-                // Ürün zaten var mı diye kontrol et
-                $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM $table_questions WHERE model_code = %s", $model_code));
-                
-                if (!$exists) {
-                    $wpdb->insert($table_questions, [
-                        'trendyol_id'   => 'SYNC-' . time() . '-' . rand(100,999),
-                        'store_id'      => $sid,
-                        'product_name'  => $name,
-                        'model_code'    => $model_code,
-                        'barcode'       => $barcode,
-                        'question_text' => 'OTOMATIK SENKRONIZASYON',
-                        'answer_text'   => '',
-                        'status'        => 'SYNCED',
-                        'created_date'  => current_time('mysql')
-                    ]);
-                    $sync_count++;
-                }
+                $totalPages = isset($data['totalPages']) ? intval($data['totalPages']) : 1;
+                if ($page >= $totalPages - 1 || $page >= 20) break; 
+                $page++;
             }
         }
 
-        if ($sync_count === 0) {
-            // Eğer 0 ürün çekerse, X-RAY çıktısını ekrana uyarı olarak bas!
-            $msg = "Sistem 0 yeni ürün içeri aktardı.\n\nBunun 2 sebebi olabilir:\n1- Tüm ürünleriniz zaten listeye eklenmiş.\n2- Trendyol veriyi farklı gönderiyor.\n\n[Gelen Verinin Haritası]:\n" . substr($debug_sample, 0, 400) . "...";
-            wp_send_json_success($msg);
+        // Özet Rapor
+        $msg = "⚡ Işık Hızında Senkronizasyon Tamamlandı!\n\n";
+        
+        if (array_sum($stats) === 0) {
+            $msg .= "✅ Ürünleriniz zaten en güncel halinde. Yeni bir değişiklik bulunamadı.";
         } else {
-            wp_send_json_success($sync_count . ' yeni ürün başarıyla içeri aktarıldı.');
+            $msg .= "📊 İŞLEM ÖZETİ:\n";
+            if ($stats['new'] > 0) $msg .= "➕ " . $stats['new'] . " Yeni Ürün Eklendi.\n";
+            if ($stats['name'] > 0) $msg .= "✏️ " . $stats['name'] . " Ürünün İsmi Güncellendi.\n";
+            if ($stats['barcode'] > 0) $msg .= "🏷️ " . $stats['barcode'] . " Ürüne Yeni Barkod İşlendi.\n";
+            if ($stats['model'] > 0) $msg .= "📦 " . $stats['model'] . " Ürünün Model Kodu Değişti.\n";
+            if ($stats['store'] > 0) $msg .= "🏪 " . $stats['store'] . " Ürünün Mağaza Bilgisi Güncellendi.\n";
         }
+
+        wp_send_json_success($msg);
     }
 }

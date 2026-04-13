@@ -59,10 +59,15 @@ $body = [
         $body_str = wp_remote_retrieve_body($response);
         $data = json_decode($body_str, true);
         
-        // Google'dan dönen gerçek hatayı yakala
         if (isset($data['error'])) return ['error' => 'Google API: ' . $data['error']['message']];
-        if (isset($data['embedding']['values'])) return ['values' => $data['embedding']['values']];
-
+        if (isset($data['embedding']['values'])) {
+            // Google vektörde faturayı gizlerse diye tahmini token hesapla (4 karakter = 1 token)
+            $tokens = ceil(mb_strlen($text) / 4);
+            $usage = isset($data['usageMetadata']) ? $data['usageMetadata'] : ['promptTokenCount' => $tokens, 'candidatesTokenCount' => 0];
+            self::log_api_cost('TEKİL_VEKTÖR_İNDEKS', $usage);
+            
+            return ['values' => $data['embedding']['values']];
+        }
         return ['error' => 'Bilinmeyen API Yanıtı.'];
     }
 
@@ -97,8 +102,14 @@ $api_key = self::decrypt_data($encrypted_key);
         $data = json_decode($body_str, true);
 
         if (isset($data['error'])) return ['error' => 'Google API: ' . $data['error']['message']];
-        if (isset($data['embeddings'])) return ['embeddings' => $data['embeddings']];
+        if (isset($data['embeddings'])) {
+            // Tüm arşivi okurken harcanan devasa tokeni hesapla
+            $total_chars = 0; foreach($texts as $t) { $total_chars += mb_strlen($t); }
+            $usage = isset($data['usageMetadata']) ? $data['usageMetadata'] : ['promptTokenCount' => ceil($total_chars / 4), 'candidatesTokenCount' => 0];
+            self::log_api_cost('TOPLU_ARŞİV_İNDEKS', $usage);
 
+            return ['embeddings' => $data['embeddings']];
+        }
         return ['error' => 'Bilinmeyen API Yanıtı.'];
     }
 
@@ -256,8 +267,11 @@ $api_key = self::decrypt_data($encrypted_key);
             return "🛡️ Güvenlik Engeli: Google bu soruya cevap vermeyi reddetti. Sebep (FinishReason): " . $data['candidates'][0]['finishReason'];
         }
 
-        // 3. Başarılı ve temiz cevap
+       /// 3. Başarılı ve temiz cevap
         if (isset($data['candidates'][0]['content']['parts'][0]['text'])) {
+            if (isset($data['usageMetadata'])) {
+                self::log_api_cost('AKILLI_YZ_CEVAP', $data['usageMetadata']);
+            }
             return $data['candidates'][0]['content']['parts'][0]['text'];
         }
 
@@ -329,5 +343,32 @@ $api_key = self::decrypt_data($encrypted_key);
             $page++;
         }
         return $all_items;
+    }
+    // --- GİDER (MALİYET) TAKİP MOTORU ---
+    public static function log_api_cost($action_type, $usage_data) {
+        if (empty($usage_data)) return;
+        global $wpdb;
+        $table_logs = $wpdb->prefix . 'ql_api_logs';
+        
+        $tokens_in = isset($usage_data['promptTokenCount']) ? intval($usage_data['promptTokenCount']) : 0;
+        $tokens_out = isset($usage_data['candidatesTokenCount']) ? intval($usage_data['candidatesTokenCount']) : 0;
+        
+       $cost = 0;
+        // Eğer işlem içinde İNDEKS veya VEKTÖR kelimesi geçiyorsa Embedding tarifesini uygula
+        if (strpos($action_type, 'İNDEKS') !== false || strpos($action_type, 'VEKTÖR') !== false) {
+            // Embedding Modeli: 1 Milyon Token = $0.10 (Güncel v4 Tahmini)
+            $cost = ($tokens_in / 1000000) * 0.10;
+        } else {
+            // GÜNCEL ÜCRETLİ KATMAN: Girdi 1M = $0.30 | Çıktı 1M = $2.50
+            $cost = (($tokens_in / 1000000) * 0.30) + (($tokens_out / 1000000) * 2.50);
+        }
+
+        $wpdb->insert($table_logs, [
+            'action_type' => $action_type,
+            'tokens_in'   => $tokens_in,
+            'tokens_out'  => $tokens_out,
+            'cost_usd'    => $cost,
+            'created_date'=> current_time('mysql')
+        ]);
     }
 }

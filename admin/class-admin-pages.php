@@ -16,215 +16,195 @@ class QualityLife_Admin_Pages {
         add_menu_page('YZ Eğitim ve Ayarlar', 'YZ Asistan', 'manage_options', 'ql-ai-settings', [ $this, 'page_settings' ], 'dashicons-robot', 30);
         add_submenu_page('ql-ai-settings', 'Bekleyen Sorular', 'Bekleyen Sorular', 'manage_options', 'ql-ai-questions', [ $this, 'page_questions' ]);
         add_submenu_page('ql-ai-settings', 'Soru Arşivi', 'Soru Arşivi (Bot)', 'manage_options', 'ql-ai-past-questions', [ $this, 'page_past_questions' ]);
-       add_submenu_page('ql-ai-settings', 'Ürün Eğitimi (RAG)', '🧠 Ürün Eğitimi', 'manage_options', 'ql-ai-training', [$this, 'page_product_training']);
+        add_submenu_page('ql-ai-settings', 'Ürün Eğitimi (RAG)', '🧠 Ürün Eğitimi', 'manage_options', 'ql-ai-training', [$this, 'page_product_training']);
+        
+        // DÜZELTME: Sınıf içi çağrım olduğu için $this kullanıldı
+        add_submenu_page('ql-ai-settings', 'Maliyet Raporu', '💸 Maliyet Raporu', 'manage_options', 'ql-ai-costs', [$this, 'page_costs']);
     }
 
-    // --- SAYFA 1: AYARLAR ---
-    // --- SAYFA 1: AYARLAR VE EĞİTİM ---
+  // --- SAYFA 1: AYARLAR ---
     public function page_settings() {
-        global $wpdb;
         $stores = get_option('ql_trendyol_stores', []); 
-        
-        // Şifrelenmiş veriyi çekip, ekranda göstermek için çözüyoruz (Güvenlik zinciri)
         $encrypted_gemini = get_option('ql_gemini_api_key', '');
         $gemini_api_key = QualityLife_API_Services::decrypt_data($encrypted_gemini);
-        
-        $global_prompt = get_option('ql_gemini_system_prompt', 'Sen bir müşteri temsilcisisin.');
-        $table_name = $wpdb->prefix . 'ql_product_knowledge';
-        $products = $wpdb->get_results("SELECT * FROM {$table_name} ORDER BY id DESC LIMIT 50");
         ?>
         <style>
-            /* --- QL YZ Modern SaaS UI CSS --- */
-            :root {
-                --ql-primary: #4f46e5;
-                --ql-primary-hover: #4338ca;
-                --ql-secondary: #0ea5e9;
-                --ql-bg: #f8fafc;
-                --ql-card: #ffffff;
-                --ql-text: #1e293b;
-                --ql-text-light: #64748b;
-                --ql-border: #e2e8f0;
-                --ql-success: #10b981;
-            }
-            .ql-wrap {
-                margin: 20px 20px 0 0;
-                font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-                color: var(--ql-text);
-            }
-            .ql-header {
-                display: flex; justify-content: space-between; align-items: center;
-                background: linear-gradient(135deg, var(--ql-primary), var(--ql-secondary));
-                padding: 25px 35px; border-radius: 16px; color: white; 
-                box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.3);
-                margin-bottom: 30px;
-            }
-            .ql-header h1 { color: white; margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.5px; }
-            .ql-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 25px; }
-            .ql-card {
-                background: var(--ql-card); border-radius: 16px; padding: 25px;
-                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-                border: 1px solid var(--ql-border); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            }
-            .ql-card:hover { transform: translateY(-5px); box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04); }
-            .ql-card h3 { margin-top: 0; border-bottom: 2px solid var(--ql-bg); padding-bottom: 12px; color: var(--ql-text); font-weight: 600; font-size: 18px; }
-            .ql-input, .ql-textarea {
-                width: 100%; padding: 12px 16px; border: 1px solid var(--ql-border); border-radius: 10px;
-                margin-bottom: 16px; font-size: 14px; transition: all 0.2s;
-                background: #fbfbfc; box-sizing: border-box; color: var(--ql-text);
-            }
-            .ql-input:focus, .ql-textarea:focus {
-                border-color: var(--ql-primary); box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.15); outline: none; background: #fff;
-            }
-            .ql-btn {
-                background: var(--ql-primary); color: white; border: none; padding: 12px 24px;
-                border-radius: 10px; cursor: pointer; font-weight: 600; font-size: 14px;
-                transition: all 0.2s; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-            }
+            /* Modern SaaS UI CSS & Mobil Uyumluluk */
+            :root { --ql-primary: #4f46e5; --ql-primary-hover: #4338ca; --ql-bg: #f8fafc; --ql-card: #ffffff; --ql-text: #1e293b; --ql-text-light: #64748b; --ql-border: #e2e8f0; --ql-success: #10b981; }
+            .ql-wrap { max-width: 1200px; margin: 20px auto 0; padding: 0 20px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: var(--ql-text); box-sizing: border-box; }
+            .ql-wrap * { box-sizing: border-box; }
+            .ql-header { background: linear-gradient(135deg, #0f172a, #1e293b); border-radius: 16px; padding: 30px 40px; color: #fff; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.15); margin-bottom: 30px; flex-wrap: wrap; gap: 15px; }
+            .ql-header h1 { color: white; margin: 0; font-size: 24px; font-weight: 700; }
+            
+            /* Tabs (Sekmeler) */
+            .ql-tabs { display: flex; gap: 5px; margin-bottom: 25px; border-bottom: 2px solid var(--ql-border); overflow-x: auto; padding-bottom: 0; scrollbar-width: none; }
+            .ql-tabs::-webkit-scrollbar { display: none; }
+            .ql-tab-btn { background: transparent; border: none; padding: 15px 25px; font-size: 15px; font-weight: 600; color: var(--ql-text-light); cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; transition: 0.3s; white-space: nowrap; }
+            .ql-tab-btn:hover { color: var(--ql-primary); background: rgba(79,70,229,0.05); border-top-left-radius: 8px; border-top-right-radius: 8px; }
+            .ql-tab-btn.active { color: var(--ql-primary); border-bottom-color: var(--ql-primary); }
+            .ql-tab-content { display: none; animation: qlFadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+            .ql-tab-content.active { display: block; }
+            @keyframes qlFadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+            /* Cards & Inputs */
+            .ql-card { background: var(--ql-card); border-radius: 16px; padding: 30px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); border: 1px solid var(--ql-border); margin-bottom: 25px; }
+            .ql-card h3 { margin-top: 0; border-bottom: 1px solid var(--ql-bg); padding-bottom: 15px; color: var(--ql-text); font-weight: 600; font-size: 18px; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+            .ql-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 25px; }
+            .ql-input, .ql-textarea { width: 100%; padding: 12px 16px; border: 1px solid var(--ql-border); border-radius: 10px; margin-bottom: 16px; font-size: 14px; background: #fbfbfc; color: var(--ql-text); transition: 0.2s; }
+            .ql-input:focus, .ql-textarea:focus { border-color: var(--ql-primary); box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1); outline: none; background: #fff; }
+            label { font-weight: 600; display: block; margin-bottom: 8px; font-size: 13px; color: var(--ql-text); }
+            
+            /* Buttons */
+            .ql-btn { background: var(--ql-primary); color: white; border: none; padding: 12px 24px; border-radius: 10px; cursor: pointer; font-weight: 600; font-size: 14px; transition: 0.2s; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
             .ql-btn:hover { background: var(--ql-primary-hover); transform: translateY(-1px); }
-            .ql-btn:active { transform: translateY(1px); }
             .ql-btn-secondary { background: var(--ql-bg); color: var(--ql-text); border: 1px solid var(--ql-border); }
             .ql-btn-secondary:hover { background: #e2e8f0; }
-            .ql-list-item {
-                display: flex; justify-content: space-between; align-items: center;
-                padding: 12px 16px; background: var(--ql-bg); border-radius: 10px; margin-bottom: 10px;
-                border: 1px solid var(--ql-border); transition: border-color 0.2s;
-            }
-            .ql-list-item:hover { border-color: var(--ql-primary); }
+
+            /* Store List */
+            .ql-store-item { background: #fff; border: 1px solid var(--ql-border); border-left: 4px solid var(--ql-primary); padding: 20px; border-radius: 12px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; transition: 0.2s; }
+            .ql-store-item:hover { box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05); border-color: #cbd5e1; }
             .ql-badge { background: #e0e7ff; color: var(--ql-primary); padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; }
-            
-            /* --- POPUP (MODAL) SİSTEMİ CSS --- */
-            .ql-modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.7); z-index: 99999; backdrop-filter: blur(5px); align-items: center; justify-content: center; opacity: 0; transition: opacity 0.3s ease; }
+
+            /* Modal */
+            .ql-modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.7); z-index: 99999; backdrop-filter: blur(5px); align-items: center; justify-content: center; opacity: 0; transition: 0.3s; }
             .ql-modal-overlay.active { display: flex; opacity: 1; }
-            .ql-modal { background: #fff; width: 700px; max-width: 95%; border-radius: 20px; padding: 35px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.3); transform: translateY(30px) scale(0.95); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); position: relative; border: 1px solid rgba(255,255,255,0.2); }
-            .ql-modal-overlay.active .ql-modal { transform: translateY(0) scale(1); }
-            .ql-modal-close { position: absolute; top: 20px; right: 25px; background: #f1f5f9; border: none; width: 32px; height: 32px; border-radius: 50%; font-size: 16px; cursor: pointer; color: var(--ql-text-light); transition: all 0.2s; display:flex; align-items:center; justify-content:center; }
+            .ql-modal { background: #fff; width: 600px; max-width: 95%; border-radius: 20px; padding: 35px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.3); transform: translateY(20px); transition: 0.3s; position: relative; }
+            .ql-modal-overlay.active .ql-modal { transform: translateY(0); }
+            .ql-modal-close { position: absolute; top: 20px; right: 25px; background: #f1f5f9; border: none; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; transition: 0.2s; display:flex; align-items:center; justify-content:center; }
             .ql-modal-close:hover { background: #ef4444; color: #fff; transform: rotate(90deg); }
-            .ql-modal textarea { min-height: 250px; font-size: 15px; line-height: 1.6; padding: 20px; resize: vertical; }
+            .ql-modal-close { position: absolute; top: 20px; right: 25px; background: #f1f5f9; border: none; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; transition: 0.2s; display:flex; align-items:center; justify-content:center; }
+            .ql-modal-close:hover { background: #ef4444; color: #fff; transform: rotate(90deg); }
+            /* Scrollable Store List */
+            .ql-store-list-container { max-height: 550px; overflow-y: auto; padding-right: 8px; }
+            .ql-store-list-container::-webkit-scrollbar { width: 6px; }
+            .ql-store-list-container::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 10px; }
+            .ql-store-list-container::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+            .ql-store-list-container::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+            /* Mobile Responsiveness (Sihirli Kısım) */
+            @media (max-width: 768px) {
+                .ql-header { flex-direction: column; text-align: center; padding: 25px 20px; }
+                .ql-grid-2 { grid-template-columns: 1fr; gap: 0; }
+                .ql-card { padding: 20px; }
+                .ql-store-item { flex-direction: column; align-items: flex-start; }
+                .ql-store-item > div { width: 100%; }
+                .ql-store-actions { display: flex; width: 100%; gap: 10px; margin-top: 10px; border-top: 1px dashed var(--ql-border); padding-top: 15px; }
+                .ql-store-actions button { flex: 1; justify-content: center; padding: 10px; }
+                .ql-tabs { padding-bottom: 5px; }
+            }
         </style>
 
         <div class="ql-wrap">
             <div class="ql-header">
                 <div>
-                    <h1>✨ YZ Asistan Kontrol Merkezi</h1>
-                    <div style="font-size: 14px; opacity: 0.9; margin-top: 5px;">Müşteri ilişkilerinizi yöneten akıllı beyin.</div>
+                    <h1>✨ YZ Asistan Yönetimi</h1>
+                    <div style="font-size: 14px; opacity: 0.8; margin-top: 5px;">Modern e-ticaret için akıllı müşteri ilişkileri.</div>
                 </div>
-                <div style="background: rgba(255,255,255,0.2); padding: 8px 16px; border-radius: 20px; font-weight: 600; backdrop-filter: blur(10px);">
-                    🚀 Sürüm 2.0 Turbo Mod Aktif
+                <div style="background: rgba(255,255,255,0.1); padding: 8px 16px; border-radius: 20px; font-weight: 600; border: 1px solid rgba(255,255,255,0.2);">
+                    🚀 Sürüm 2.0 Turbo Mod
                 </div>
             </div>
 
-            <?php if(isset($_GET['updated'])) echo '<div class="notice notice-success is-dismissible" style="border-radius: 10px; border-left: 4px solid var(--ql-success); padding: 12px; background: #fff;"><p style="margin:0; font-size: 14px;"><strong>Harika!</strong> Ayarlar başarıyla güncellendi ve AES-256 ile şifrelenerek güvene alındı. 🔒</p></div>'; ?>
+            <?php if(isset($_GET['updated'])) echo '<div class="notice notice-success is-dismissible" style="border-radius: 10px; border-left: 4px solid var(--ql-success); padding: 12px 20px; background: #fff; margin-bottom: 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);"><p style="margin:0; font-size: 14px;"><strong>Harika!</strong> Ayarlar başarıyla güncellendi ve AES-256 ile şifrelenerek güvene alındı. 🔒</p></div>'; ?>
 
-            <div class="ql-grid" style="margin-top: 25px;">
+            <div class="ql-tabs">
+                <button class="ql-tab-btn active" onclick="qlOpenTab('tab-api')">🔐 YZ Bağlantısı</button>
+                <button class="ql-tab-btn" onclick="qlOpenTab('tab-stores')">🏪 Mağazalar & Marka Dili</button>
+            </div>
+
+            <div id="tab-api" class="ql-tab-content active">
                 <div class="ql-card">
-                    <h3>🔐 1. Yapay Zeka (Gemini) Bağlantısı</h3>
-                    <p style="color: var(--ql-text-light); font-size: 13px; margin-bottom: 15px; line-height: 1.5;">Bu bilgiler Google sunucularıyla konuşmanızı sağlar. Veritabanında üst düzey kriptografi ile korunmaktadır.</p>
+                    <h3>🔐 Yapay Zeka (Gemini) Bağlantısı</h3>
+                    <p style="color: var(--ql-text-light); font-size: 14px; margin-bottom: 20px; line-height: 1.6;">Sistemin zekasını kullanabilmesi için Google Gemini API anahtarınızı buraya girin. Bilgileriniz üst düzey kriptografi ile saklanmaktadır.</p>
                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                         <input type="hidden" name="action" value="ql_save_global">
                         <?php wp_nonce_field('ql_global_nonce'); ?>
                         
-                        <label style="font-weight: 600; display: block; margin-bottom: 6px; font-size: 13px;">Gemini API Anahtarı:</label>
-                        <input type="password" name="gemini_api_key" class="ql-input" value="<?php echo esc_attr($gemini_api_key); ?>" placeholder="AIizaSy...">
+                        <label>Gemini API Anahtarı:</label>
+                        <input type="password" name="gemini_api_key" class="ql-input" value="<?php echo esc_attr($gemini_api_key); ?>" placeholder="AIizaSy..." style="max-width: 500px;">
                         
-                        <button type="submit" class="ql-btn">💾 Güvenli Kaydet</button>
+                        <div style="margin-top: 10px;">
+                            <button type="submit" class="ql-btn">💾 Güvenli Kaydet</button>
+                        </div>
                     </form>
-                </div>
-
-                <div class="ql-card">
-                    <h3>🏪 2. Trendyol Mağaza Entegrasyonu</h3>
-                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="margin-bottom: 25px;">
-                        <input type="hidden" name="action" value="ql_save_store">
-                        <?php wp_nonce_field('ql_store_nonce'); ?>
-                        
-                        <input type="text" name="store_name" class="ql-input" required placeholder="Mağaza Adı (Örn: QL Merkez)">
-                        <div style="display: flex; gap: 15px;">
-                            <input type="text" name="seller_id" class="ql-input" required placeholder="Satıcı ID">
-                            <input type="text" name="api_key" class="ql-input" required placeholder="Trendyol API Key">
-                        </div>
-                       <input type="password" name="api_secret" class="ql-input" required placeholder="Trendyol API Secret (Gizli)">
-<label style="font-weight: 600; display: block; margin-bottom: 6px; font-size: 13px;">Mağaza Marka Dili ve Kuralları:</label>
-<textarea name="store_prompt" class="ql-textarea" rows="3" placeholder="Örn: 'Merhabalar efendim' diye başla. Aras kargo ile çalışıyoruz. Bizi tercih ettiğiniz için teşekkür ederiz diye bitir." required></textarea>
-                        
-                        <button type="submit" class="ql-btn ql-btn-secondary" style="width: 100%;">➕ Mağazayı Sisteme Ekle</button>
-                    </form>
-
-                   <h4 style="margin: 0 0 10px 0; color: var(--ql-text); font-size: 15px;">Bağlı Mağazalar ve Marka Dilleri</h4>
-                    <div style="max-height: 400px; overflow-y: auto; padding-right: 5px;">
-                        <?php if(empty($stores)) echo '<p style="font-size:13px; color:var(--ql-text-light);">Henüz mağaza eklenmedi.</p>'; ?>
-                        <?php foreach($stores as $id => $s): ?>
-                            <div class="ql-list-item" style="flex-direction: column; align-items: stretch; gap: 10px; background: #fff; border-left: 4px solid var(--ql-secondary);">
-                                <div style="display: flex; justify-content: space-between; align-items: center;">
-                                    <div>
-                                        <strong style="display: block; font-size: 14px; color: var(--ql-primary);"><?php echo esc_html($s['name']); ?></strong>
-                                        <span class="ql-badge" style="margin-top: 4px; display: inline-block; background: #f1f5f9; color: var(--ql-text-light);">Kimlik: <?php echo esc_attr($id); ?></span>
-                                    </div>
-                                    <button type="button" class="ql-btn ql-btn-secondary btn-test-store" data-id="<?php echo esc_attr($id); ?>" style="padding: 6px 12px; font-size: 11px; border-radius: 6px;">🔌 Test Et</button>
-                                </div>
-                                
-                                <div style="margin-top: 10px; padding-top: 15px; border-top: 1px dashed var(--ql-border); display: flex; justify-content: flex-end;">
-                                    <button type="button" class="ql-btn btn-open-modal" data-id="<?php echo esc_attr($id); ?>" data-name="<?php echo esc_attr($s['name']); ?>" data-prompt="<?php echo isset($s['prompt']) ? esc_attr($s['prompt']) : ''; ?>" style="padding: 8px 18px; font-size: 13px; border-radius: 8px; background: var(--ql-secondary);">
-                                        <span style="margin-right: 8px; font-size: 16px;">✍️</span> Marka Dilini Düzenle
-                                    </button>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
-                    </div>
-                </div>
-
-                <div class="ql-card" style="grid-column: 1 / -1;">
-                    <h3>📚 3. Manuel Ürün Bilgisi (RAG Beslemesi)</h3>
-                    <p style="color: var(--ql-text-light); font-size: 14px; margin-bottom: 20px;">Özel detay gerektiren ürünler için (Örn: "Bu ürün paraben içermez") yapay zekaya manuel talimat verin. Sistem vektör aramasıyla bulamadığı kısımları buradan çekecektir.</p>
-                    
-                    <div style="display: flex; gap: 30px; flex-wrap: wrap;">
-                        <div style="flex: 1; min-width: 300px;">
-                            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
-                                <input type="hidden" name="action" value="ql_save_knowledge">
-                                <?php wp_nonce_field('ql_knowledge_nonce'); ?>
-                                
-                                <label style="font-weight: 600; display: block; margin-bottom: 6px; font-size: 13px;">Ürün Model Kodu / Barkod:</label>
-                                <input type="text" name="barcode" class="ql-input" required placeholder="Örn: QL-GOZ-001">
-                                
-                                <label style="font-weight: 600; display: block; margin-bottom: 6px; font-size: 13px;">YZ İçin Özel Talimat:</label>
-                                <textarea name="product_info" class="ql-textarea" rows="4" required placeholder="Bu ürün tuz içermez, keratin bakımı sonrasında güvenle kullanılabilir..."></textarea>
-                                
-                                <button type="submit" class="ql-btn">🧠 Bilgiyi Beyne Yaz</button>
-                            </form>
-                        </div>
-                        
-                        <div style="flex: 1; min-width: 300px; background: var(--ql-bg); border-radius: 12px; border: 1px solid var(--ql-border); overflow: hidden;">
-                           <table class="wp-list-table widefat fixed striped" style="border: none; box-shadow: none; margin: 0;">
-                               <thead>
-                                   <tr>
-                                       <th style="width: 25%; font-weight: 600; padding: 15px;">Model Kodu</th>
-                                       <th style="width: 55%; font-weight: 600; padding: 15px;">Öğrenilmiş Kural</th>
-                                       <th style="width: 20%; font-weight: 600; padding: 15px; text-align: right;">İşlem</th>
-                                   </tr>
-                               </thead>
-                                <tbody>
-                                    <?php if(empty($products)) echo '<tr><td colspan="3" style="text-align:center; padding: 20px; color: var(--ql-text-light);">Henüz özel ürün bilgisi girilmedi.</td></tr>'; ?>
-                                    <?php foreach($products as $p): ?>
-                                        <tr>
-                                            <td style="padding: 12px 15px;"><strong style="color: var(--ql-primary);"><?php echo esc_html($p->barcode); ?></strong></td>
-                                            <td style="padding: 12px 15px; font-size: 13px; color: var(--ql-text);"><?php echo esc_html($p->product_info); ?></td>
-                                            <td style="padding: 12px 15px; text-align: right;">
-                                                <button type="button" class="ql-btn ql-btn-secondary btn-edit-knowledge" style="padding: 6px 12px; font-size: 11px; border-radius: 6px;" data-id="<?php echo esc_attr($p->id); ?>" data-barcode="<?php echo esc_attr($p->barcode); ?>" data-info="<?php echo esc_attr($p->product_info); ?>">✏️ Düzenle</button>
-                                            </td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
                 </div>
             </div>
-       <div class="ql-modal-overlay" id="qlPromptModal">
+
+            <div id="tab-stores" class="ql-tab-content">
+                <div class="ql-grid-2">
+                    
+                    <div>
+                        <div class="ql-card">
+                            <h3>➕ Yeni Mağaza Ekle</h3>
+                            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                                <input type="hidden" name="action" value="ql_save_store">
+                                <?php wp_nonce_field('ql_store_nonce'); ?>
+                                
+                                <label>Mağaza Adı (Örn: QL Merkez):</label>
+                                <input type="text" name="store_name" class="ql-input" required>
+                                
+                                <div class="ql-grid-2" style="gap: 15px;">
+                                    <div>
+                                        <label>Satıcı ID:</label>
+                                        <input type="text" name="seller_id" class="ql-input" required>
+                                    </div>
+                                    <div>
+                                        <label>API Key:</label>
+                                        <input type="text" name="api_key" class="ql-input" required>
+                                    </div>
+                                </div>
+                                
+                                <label>API Secret (Gizli & Şifrelenir):</label>
+                                <input type="password" name="api_secret" class="ql-input" required>
+                                
+                                <label>Mağazanın Marka Dili ve Kuralları:</label>
+                                <textarea name="store_prompt" class="ql-textarea" rows="3" required placeholder="Örn: 'Merhabalar efendim' diye başla..."></textarea>
+                                
+                                <button type="submit" class="ql-btn" style="width: 100%;">➕ Sisteme Ekle</button>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="ql-card" style="background: transparent; border: none; box-shadow: none; padding: 0;">
+                            <h3 style="border-bottom: none; margin-bottom: 10px; display: flex; align-items: center;">
+                                🏪 Bağlı Mağazalar 
+                                <?php if(!empty($stores)): ?>
+                                    <span style="font-size: 12px; background: var(--ql-primary); color: #fff; padding: 2px 8px; border-radius: 12px; font-weight: bold; margin-left: 10px;"><?php echo count($stores); ?></span>
+                                <?php endif; ?>
+                            </h3>
+                            
+                            <?php if(empty($stores)): ?>
+                                <div style="background: #fff; padding: 30px; border-radius: 12px; text-align: center; color: var(--ql-text-light); border: 1px dashed var(--ql-border);">Henüz sisteme mağaza eklenmedi.</div>
+                            <?php else: ?>
+                                <div class="ql-store-list-container">
+                                    <?php foreach($stores as $id => $s): ?>
+                                        <div class="ql-store-item">
+                                            <div>
+                                                <strong style="display: block; font-size: 16px; color: var(--ql-text); margin-bottom: 5px;"><?php echo esc_html($s['name']); ?></strong>
+                                                <span class="ql-badge">ID: <?php echo esc_attr($id); ?></span>
+                                            </div>
+                                            <div class="ql-store-actions">
+                                                <button type="button" class="ql-btn ql-btn-secondary btn-test-store" data-id="<?php echo esc_attr($id); ?>" style="padding: 8px 12px; font-size: 13px;">🔌 Test Et</button>
+                                                <button type="button" class="ql-btn btn-open-modal" data-id="<?php echo esc_attr($id); ?>" data-name="<?php echo esc_attr($s['name']); ?>" data-prompt="<?php echo isset($s['prompt']) ? esc_attr($s['prompt']) : ''; ?>" style="padding: 8px 12px; font-size: 13px; background: var(--ql-secondary);">✍️ Marka Dili</button>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <div class="ql-modal-overlay" id="qlPromptModal">
                 <div class="ql-modal">
                     <button class="ql-modal-close" onclick="closePromptModal()">✖</button>
-                    <h2 style="margin: 0 0 5px 0; color: var(--ql-primary); font-size: 24px; font-weight: 800; display:flex; align-items:center; gap:10px;">
-                        <span>🧠</span> Mağaza Dilini Eğit
+                    <h2 style="margin: 0 0 10px 0; color: var(--ql-text); font-size: 22px; display:flex; align-items:center; gap:10px;">
+                        <span>✍️</span> Marka Dilini Eğit
                     </h2>
-                    <p style="color: var(--ql-text-light); font-size: 14px; margin-bottom: 25px; line-height: 1.5;">
-                        <strong id="modalStoreName" style="color: var(--ql-text); font-size: 15px;"></strong> mağazası için yapay zekanın kullanacağı karşılama, kapanış, kargo ve üslup kurallarını belirleyin.
+                    <p style="color: var(--ql-text-light); font-size: 14px; margin-bottom: 20px;">
+                        <strong id="modalStoreName" style="color: var(--ql-text);"></strong> mağazası için yapay zekanın kullanacağı üslup kurallarını belirleyin.
                     </p>
                     
                     <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
@@ -232,96 +212,73 @@ class QualityLife_Admin_Pages {
                         <?php wp_nonce_field('ql_store_prompt_nonce'); ?>
                         <input type="hidden" name="store_id" id="modalStoreId" value="">
                         
-                        <textarea name="store_prompt" id="modalStorePrompt" class="ql-textarea" placeholder="Örn:&#10;- Merhabalar efendim diye başla.&#10;- Müşteriye daima 'Siz' diye hitap et.&#10;- Sürat Kargo ile gönderim yapıyoruz.&#10;- Bizi tercih ettiğiniz için teşekkür ederiz diyerek bitir."></textarea>
+                        <textarea name="store_prompt" id="modalStorePrompt" class="ql-textarea" rows="6" placeholder="Örn:&#10;- Merhabalar efendim diye başla.&#10;- Müşteriye daima 'Siz' diye hitap et."></textarea>
                         
-                        <div style="display: flex; justify-content: flex-end; gap: 15px; margin-top: 10px;">
-                            <button type="button" class="ql-btn ql-btn-secondary" onclick="closePromptModal()" style="padding: 12px 25px;">İptal Et</button>
-                            <button type="submit" class="ql-btn" style="padding: 12px 30px; font-size: 15px;">💾 Yeni Dili Beyne Yaz</button>
-                        </div>
-            </form>
-                </div>
-            </div>
-            <div class="ql-modal-overlay" id="qlKnowledgeModal">
-                <div class="ql-modal" style="max-width: 500px;">
-                    <button class="ql-modal-close" onclick="closeKnowledgeModal()">✖</button>
-                    <h2 style="margin: 0 0 15px 0; color: var(--ql-primary); font-size: 22px; font-weight: 800; display:flex; align-items:center; gap:10px;">
-                        <span>📚</span> Bilgiyi Güncelle
-                    </h2>
-                    
-                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
-                        <input type="hidden" name="action" value="ql_update_knowledge">
-                        <?php wp_nonce_field('ql_knowledge_update_nonce'); ?>
-                        <input type="hidden" name="k_id" id="modalKId" value="">
-                        
-                        <label style="font-weight: 600; display: block; margin-bottom: 6px; font-size: 13px;">Model Kodu / Barkod:</label>
-                        <input type="text" name="k_barcode" id="modalKBarcode" class="ql-input" required>
-                        
-                        <label style="font-weight: 600; display: block; margin-bottom: 6px; font-size: 13px;">YZ İçin Özel Talimat:</label>
-                        <textarea name="k_info" id="modalKInfo" class="ql-textarea" rows="4" required style="min-height: 120px;"></textarea>
-                        
-                        <div style="display: flex; justify-content: flex-end; gap: 15px; margin-top: 10px;">
-                            <button type="button" class="ql-btn ql-btn-secondary" onclick="closeKnowledgeModal()" style="padding: 10px 20px;">İptal</button>
-                            <button type="submit" class="ql-btn" style="padding: 10px 20px;">💾 Güncelle</button>
+                        <div style="display: flex; justify-content: flex-end; gap: 15px; margin-top: 15px;">
+                            <button type="button" class="ql-btn ql-btn-secondary" onclick="closePromptModal()">İptal Et</button>
+                            <button type="submit" class="ql-btn">💾 Güncelle</button>
                         </div>
                     </form>
                 </div>
             </div>
-            </div>
-        
+
+        </div>
+
         <script>
-        // Popup Kapatma Fonksiyonu
-        // Popup Kapatma Fonksiyonu
+        // --- 1. SEKMELER (TABS) MANTIĞI ---
+        function qlOpenTab(tabId) {
+            // Butonları güncelle
+            document.querySelectorAll('.ql-tab-btn').forEach(btn => btn.classList.remove('active'));
+            event.currentTarget.classList.add('active');
+            
+            // İçerikleri (Sayfaları) güncelle
+            document.querySelectorAll('.ql-tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(tabId).classList.add('active');
+        }
+
+        // --- 2. MODAL VE TEST BUTONLARI ---
         function closePromptModal() {
             const overlay = document.getElementById('qlPromptModal');
             overlay.classList.remove('active');
             setTimeout(() => overlay.style.display = 'none', 300);
         }
-        function closeKnowledgeModal() {
-            const overlay = document.getElementById('qlKnowledgeModal');
-            overlay.classList.remove('active');
-            setTimeout(() => overlay.style.display = 'none', 300);
-        }
 
         document.addEventListener('DOMContentLoaded', function() {
-            
-            // Popup Açma Tetikleyicisi
+            // Modal Açma İşlemi
             document.querySelectorAll('.btn-open-modal').forEach(btn => {
                 btn.addEventListener('click', function() {
-                    // Verileri modalın içine doldur
                     document.getElementById('modalStoreId').value = this.dataset.id;
                     document.getElementById('modalStoreName').innerText = this.dataset.name;
                     document.getElementById('modalStorePrompt').value = this.dataset.prompt;
                     
-                    // Modalı ekranda göster ve animasyonu tetikle
                     const overlay = document.getElementById('qlPromptModal');
                     overlay.style.display = 'flex';
                     setTimeout(() => overlay.classList.add('active'), 10);
                 });
             });
-            // Ürün Bilgisi Düzenleme Popup'ını Aç
-            document.querySelectorAll('.btn-edit-knowledge').forEach(btn => {
-                btn.addEventListener('click', function() {
-                    document.getElementById('modalKId').value = this.dataset.id;
-                    document.getElementById('modalKBarcode').value = this.dataset.barcode;
-                    document.getElementById('modalKInfo').value = this.dataset.info;
-                    
-                    const overlay = document.getElementById('qlKnowledgeModal');
-                    overlay.style.display = 'flex';
-                    setTimeout(() => overlay.classList.add('active'), 10);
-                });
-            });
+
+            // API Test İstekleri
             document.querySelectorAll('.btn-test-store').forEach(btn => {
                 btn.addEventListener('click', async function() {
                     const id = this.dataset.id;
                     const originalText = this.innerHTML;
-                    this.innerHTML = '⏳ Kontrol Ediliyor...'; this.disabled = true;
+                    this.innerHTML = '⏳...'; this.disabled = true;
+                    
                     const fd = new FormData();
-                    fd.append('action', 'ql_test_store'); fd.append('security', '<?php echo wp_create_nonce("ql_ajax_nonce"); ?>'); fd.append('store_id', id);
+                    fd.append('action', 'ql_test_store'); 
+                    fd.append('security', '<?php echo wp_create_nonce("ql_ajax_nonce"); ?>'); 
+                    fd.append('store_id', id);
+                    
                     try {
                         const res = await fetch(ajaxurl, { method: 'POST', body: fd });
                         const data = await res.json();
                         alert(data.data && data.data.message ? data.data.message : 'Bağlantı sağlandı!');
-                    } catch (e) { alert('Bağlantı hatası oluştu. Lütfen konsolu kontrol edin.'); }
+                    } catch (e) { 
+                        alert('Bağlantı hatası oluştu. İnternet veya sunucu ayarlarınızı kontrol edin.'); 
+                    }
+                    
                     this.innerHTML = originalText; this.disabled = false;
                 });
             });
@@ -340,13 +297,15 @@ class QualityLife_Admin_Pages {
         $all_questions = [];
         
         // Mağazaları döngüye al ve soruları topla
-        foreach($stores as $sid => $s) {
+       foreach($stores as $sid => $s) {
             // Eğer bir mağaza filtresi varsa ve o anki mağaza o değilse atla
             if ($selected_seller_id !== 'all' && $selected_seller_id !== $sid) {
                 continue;
             }
             
-            $qs = QualityLife_API_Services::get_trendyol_questions($sid, $s['key'], $s['secret']);
+            // DÜZELTME: Şifreli API Secret'ı önce çözüyoruz
+            $trendyol_secret = QualityLife_API_Services::decrypt_data($s['secret']);
+            $qs = QualityLife_API_Services::get_trendyol_questions($sid, $s['key'], $trendyol_secret);
             
             if (!empty($qs) && is_array($qs)) {
                 foreach($qs as $q) {
@@ -510,16 +469,19 @@ class QualityLife_Admin_Pages {
                 <input type="text" id="ql-product-search" placeholder="Barkod veya Ürün Adı ile ara..." style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 16px;">
             </div>
 
-            <div style="background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                <div style="display: grid; grid-template-columns: 1fr 2fr 1.5fr 1fr; background: #f8f9fa; padding: 15px; font-weight: bold; border-bottom: 1px solid #eee;">
-                    <div>Model / Barkod</div>
+           <div style="background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 2fr 1.5fr 1fr; background: #f8f9fa; padding: 15px; font-weight: bold; border-bottom: 1px solid #eee; gap: 10px;">
+                    <div>Mağaza</div>
+                    <div>Barkod</div>
+                    <div>Model Kodu</div>
                     <div>Ürün Adı</div>
-                    <div>Öğrenilmiş Kural (RAG)</div>
+                    <div>Öğrenilmiş Kural</div>
                     <div style="text-align: right;">İşlem</div>
                 </div>
                 <div id="ql-product-items">
                     <div style="padding: 40px; text-align: center; color: #888;">Yükleniyor...</div>
                 </div>
+                <div id="ql-product-pagination"></div>
             </div>
         </div>
 
@@ -541,18 +503,23 @@ class QualityLife_Admin_Pages {
             const searchInput = document.getElementById('ql-product-search');
             const nonce = '<?php echo wp_create_nonce("ql_ajax_nonce"); ?>';
 
-            async function fetchProducts(search = '') {
+            let currentPage = 1;
+
+            async function fetchProducts(search = '', page = 1) {
                 container.innerHTML = '<div style="padding:40px; text-align:center;">Yükleniyor...</div>';
                 const fd = new FormData();
                 fd.append('action', 'ql_fetch_training_products');
                 fd.append('security', nonce);
                 fd.append('search', search);
+                fd.append('page', page);
 
                 try {
                     const res = await fetch(ajaxurl, { method: 'POST', body: fd });
                     const data = await res.json();
                     container.innerHTML = data.data.html;
+                    document.getElementById('ql-product-pagination').innerHTML = data.data.pagination || '';
 
+                    // Düzenle Butonları
                     document.querySelectorAll('.btn-edit-product').forEach(btn => {
                         btn.addEventListener('click', function() {
                             document.getElementById('modal-title').innerText = this.dataset.model;
@@ -562,13 +529,23 @@ class QualityLife_Admin_Pages {
                             document.getElementById('ql-edit-modal').style.display = 'flex';
                         });
                     });
+
+                    // Sayfalama Butonları
+                    document.querySelectorAll('.btn-page').forEach(btn => {
+                        btn.addEventListener('click', function() {
+                            currentPage = parseInt(this.dataset.page);
+                            fetchProducts(searchInput.value, currentPage);
+                        });
+                    });
+
                 } catch(e) { container.innerHTML = 'Hata oluştu.'; }
             }
 
             let timeout = null;
             searchInput.addEventListener('keyup', () => {
                 clearTimeout(timeout);
-                timeout = setTimeout(() => fetchProducts(searchInput.value), 500);
+                currentPage = 1; // Yeni aramada sayfayı 1'e sıfırla
+                timeout = setTimeout(() => fetchProducts(searchInput.value, currentPage), 500);
             });
 
             document.getElementById('btn-save-product-info').addEventListener('click', async function() {
@@ -638,7 +615,9 @@ class QualityLife_Admin_Pages {
         $current_page = isset($_GET['paged']) ? max(1, intval($_GET['paged'])) : 1;
         $offset = ($current_page - 1) * $items_per_page;
 
-        $where = "WHERE 1=1"; $params = [];
+        // DÜZELTME: Sadece gerçek soruları göster, otomatik senkronize edilen sahte kayıtları arşivden gizle.
+        $where = "WHERE status != 'SYNCED'"; $params = [];
+        
         if ($s_term) {
             $where .= " AND (product_name LIKE %s OR question_text LIKE %s OR model_code LIKE %s)";
             array_push($params, '%'.$s_term.'%', '%'.$s_term.'%', '%'.$s_term.'%');
@@ -730,17 +709,24 @@ class QualityLife_Admin_Pages {
                                 <span style="background: #fee2e2; color: #991b1b; padding: 4px 8px; border-radius: 6px; font-weight: 600;">⏳ İndeks Bekliyor</span>
                             <?php endif; ?>
                         </div>
-                        <strong style="color: var(--ql-primary); font-size: 15px; margin-bottom: 10px;"><?php echo esc_html($q->product_name); ?></strong>
+                       <strong style="color: var(--ql-primary); font-size: 15px; margin-bottom: 10px;"><?php echo esc_html($q->product_name); ?></strong>
                         
-                        <div style="background: #f8fafc; padding: 12px; border-radius: 8px; margin-bottom: 10px; font-size: 14px; border-left: 3px solid #cbd5e1;">
-                            <strong style="color: #475569;">S:</strong> <?php echo esc_html($q->question_text); ?>
-                        </div>
-                        <div style="background: #f0fdf4; padding: 12px; border-radius: 8px; font-size: 13px; color: #166534; margin-bottom: 15px; flex-grow: 1;">
-                            <strong>C:</strong> <?php echo esc_html($q->answer_text); ?>
-                        </div>
-                        
-                       <button type="button" class="ql-btn btn-test-ai" style="width: 100%; background: #fff; color: #4f46e5; border: 1px solid #4f46e5;" data-id="<?php echo esc_attr($q->id); ?>" data-store="<?php echo esc_attr($q->store_id); ?>" data-barcode="<?php echo esc_attr($q->model_code); ?>" data-q="<?php echo esc_attr($q->question_text); ?>">✨ Bu Soruya YZ Ne Derdi? (Test)</button>
-                        <div id="test_res_<?php echo esc_attr($q->id); ?>" style="display:none; margin-top:10px; background:#eef2ff; color:#3730a3; padding:12px; border-radius:8px; font-size: 13px; line-height: 1.5; border: 1px solid #c7d2fe;"></div>
+                        <?php if ($q->status === 'SYNCED' || $q->question_text === 'OTOMATIK SENKRONIZASYON'): ?>
+                            <div style="background: #fff8e1; padding: 15px; border-radius: 8px; margin-bottom: 15px; font-size: 13px; border-left: 4px solid #ffc107; flex-grow: 1; color: #856404; display: flex; flex-direction: column; justify-content: center;">
+                                <div style="font-weight: 600; margin-bottom: 5px; font-size: 14px;">🔄 Sistem Kaydı</div>
+                                Bu ürün veritabanına otomatik senkronize edilmiştir. Ürüne ait gerçek bir müşteri sorusu bulunmuyor.
+                            </div>
+                        <?php else: ?>
+                            <div style="background: #f8fafc; padding: 12px; border-radius: 8px; margin-bottom: 10px; font-size: 14px; border-left: 3px solid #cbd5e1;">
+                                <strong style="color: #475569;">S:</strong> <?php echo esc_html($q->question_text); ?>
+                            </div>
+                            <div style="background: #f0fdf4; padding: 12px; border-radius: 8px; font-size: 13px; color: #166534; margin-bottom: 15px; flex-grow: 1;">
+                                <strong>C:</strong> <?php echo esc_html($q->answer_text); ?>
+                            </div>
+                            
+                            <button type="button" class="ql-btn btn-test-ai" style="width: 100%; background: #fff; color: #4f46e5; border: 1px solid #4f46e5;" data-id="<?php echo esc_attr($q->id); ?>" data-store="<?php echo esc_attr($q->store_id); ?>" data-barcode="<?php echo esc_attr($q->model_code); ?>" data-q="<?php echo esc_attr($q->question_text); ?>">✨ Bu Soruya YZ Ne Derdi? (Test)</button>
+                            <div id="test_res_<?php echo esc_attr($q->id); ?>" style="display:none; margin-top:10px; background:#eef2ff; color:#3730a3; padding:12px; border-radius:8px; font-size: 13px; line-height: 1.5; border: 1px solid #c7d2fe;"></div>
+                        <?php endif; ?>
                     </div>
                 <?php endforeach; else: ?>
                     <div style="grid-column: 1 / -1; text-align: center; padding: 50px; color: var(--ql-text-light); background: #fff; border-radius: 16px; border: 1px dashed #cbd5e1;">Aradığınız kriterlere uygun soru bulunamadı.</div>
@@ -932,5 +918,105 @@ class QualityLife_Admin_Pages {
         }
         
         wp_redirect(admin_url('admin.php?page=ql-ai-settings&updated=1')); exit;
+    }
+    // --- YENİ: MALİYET RAPORU SAYFASI ---
+   public function page_costs() {
+        global $wpdb;
+        $table_logs = $wpdb->prefix . 'ql_api_logs';
+        
+        // Tablo kurulu mu kontrolü (ilk sefer için)
+        if($wpdb->get_var("SHOW TABLES LIKE '$table_logs'") != $table_logs) {
+            echo '<div class="wrap"><h2>Tablo Güncelleniyor... Lütfen sayfayı yenileyin.</h2></div>';
+            return;
+        }
+
+        // 🛠️ OTOMATİK VERİTABANI TAMİRCİSİ: Yanlış kurulan sütun adını anında düzeltir
+        $has_col = $wpdb->get_results("SHOW COLUMNS FROM $table_logs LIKE 'created_at'");
+        if(!empty($has_col)) {
+            $wpdb->query("ALTER TABLE $table_logs CHANGE created_at created_date datetime DEFAULT '0000-00-00 00:00:00'");
+        }
+
+        // Özet İstatistikleri Çekelim (Günlük, Haftalık, Aylık, Toplam)
+        $today = current_time('Y-m-d');
+        $cost_today = $wpdb->get_var("SELECT SUM(cost_usd) FROM $table_logs WHERE DATE(created_date) = '$today'") ?: 0;
+        $cost_week = $wpdb->get_var("SELECT SUM(cost_usd) FROM $table_logs WHERE YEARWEEK(created_date, 1) = YEARWEEK('$today', 1)") ?: 0;
+        $cost_month = $wpdb->get_var("SELECT SUM(cost_usd) FROM $table_logs WHERE MONTH(created_date) = MONTH('$today') AND YEAR(created_date) = YEAR('$today')") ?: 0;
+        $cost_total = $wpdb->get_var("SELECT SUM(cost_usd) FROM $table_logs") ?: 0;
+
+        // Sayfalama Listesi
+        $page = isset($_GET['paged']) ? max(1, intval($_GET['paged'])) : 1;
+        $limit = 25;
+        $offset = ($page - 1) * $limit;
+        
+        $total_items = $wpdb->get_var("SELECT COUNT(id) FROM $table_logs");
+        $total_pages = ceil($total_items / $limit);
+        $logs = $wpdb->get_results("SELECT * FROM $table_logs ORDER BY created_date DESC LIMIT $limit OFFSET $offset");
+        ?>
+        <div class="wrap" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+            <h1 style="margin-bottom: 25px; font-weight: 700; display:flex; align-items:center; gap:10px;">
+                <span style="font-size:28px;">💸</span> API Maliyet Raporu
+            </h1>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px;">
+                <div style="background:#fff; padding:20px; border-radius:12px; border:1px solid #e2e8f0; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05); text-align:center;">
+                    <div style="font-size:13px; color:#64748b; font-weight:600; text-transform:uppercase;">Bugün</div>
+                    <div style="font-size:28px; font-weight:800; color:#10b981; margin-top:5px;">$<?php echo number_format($cost_today, 4); ?></div>
+                </div>
+                <div style="background:#fff; padding:20px; border-radius:12px; border:1px solid #e2e8f0; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05); text-align:center;">
+                    <div style="font-size:13px; color:#64748b; font-weight:600; text-transform:uppercase;">Bu Hafta</div>
+                    <div style="font-size:28px; font-weight:800; color:#3b82f6; margin-top:5px;">$<?php echo number_format($cost_week, 4); ?></div>
+                </div>
+                <div style="background:#fff; padding:20px; border-radius:12px; border:1px solid #e2e8f0; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05); text-align:center;">
+                    <div style="font-size:13px; color:#64748b; font-weight:600; text-transform:uppercase;">Bu Ay</div>
+                    <div style="font-size:28px; font-weight:800; color:#8b5cf6; margin-top:5px;">$<?php echo number_format($cost_month, 4); ?></div>
+                </div>
+                <div style="background:linear-gradient(135deg, #0f172a, #1e293b); padding:20px; border-radius:12px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.2); text-align:center; color:#fff;">
+                    <div style="font-size:13px; color:#94a3b8; font-weight:600; text-transform:uppercase;">Genel Toplam</div>
+                    <div style="font-size:28px; font-weight:800; margin-top:5px;">$<?php echo number_format($cost_total, 4); ?></div>
+                </div>
+            </div>
+
+            <div style="background:#fff; border-radius:12px; border:1px solid #e2e8f0; overflow:hidden; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
+                <div style="padding:15px 20px; background:#f8fafc; border-bottom:1px solid #e2e8f0; font-weight:700; color:#1e293b;">📊 Detaylı İşlem Geçmişi</div>
+                <table class="wp-list-table widefat fixed striped" style="border:none; margin:0;">
+                    <thead>
+                        <tr>
+                            <th style="font-weight:600;">Tarih</th>
+                            <th style="font-weight:600;">İşlem Türü</th>
+                            <th style="font-weight:600;">Okunan Token</th>
+                            <th style="font-weight:600;">Yazılan Token</th>
+                            <th style="font-weight:600;">Maliyet ($)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if(empty($logs)): ?>
+                            <tr><td colspan="5" style="text-align:center; padding:20px; color:#64748b;">Henüz bir harcama kaydı bulunmuyor.</td></tr>
+                        <?php else: ?>
+                            <?php foreach($logs as $l): ?>
+                            <tr>
+                                <td><?php echo date('d.m.Y H:i:s', strtotime($l->created_date)); ?></td>
+                                <td><span style="background:#eef2ff; color:#4f46e5; padding:4px 8px; border-radius:6px; font-size:12px; font-weight:600;"><?php echo esc_html($l->action_type); ?></span></td>
+                                <td><?php echo number_format($l->tokens_in); ?></td>
+                                <td><?php echo number_format($l->tokens_out); ?></td>
+                                <td style="color:#ef4444; font-weight:600;">$<?php echo number_format($l->cost_usd, 6); ?></td>
+                            </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+                
+                <?php if($total_pages > 1): ?>
+                <div style="padding:15px; border-top:1px solid #e2e8f0; text-align:right;">
+                    <?php
+                    $page_links = paginate_links([
+                        'base' => add_query_arg('paged', '%#%'), 'format' => '', 'prev_text' => '&laquo;', 'next_text' => '&raquo;', 'total' => $total_pages, 'current' => $page
+                    ]);
+                    if ($page_links) echo "<div class='tablenav-pages' style='margin:0;'>{$page_links}</div>";
+                    ?>
+                </div>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php
     }
 }
