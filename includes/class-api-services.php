@@ -172,9 +172,9 @@ $api_key = self::decrypt_data($encrypted_key);
         }
         $new_vector = $new_question_vector_data['values'];
 
-       // B. Veritabanından o ürüne ait İndekslenmiş EN GÜNCEL 500 eski soruyu çek (Performans ve Güncellik için)
+       // B. Veritabanından o ürüne ait İndekslenmiş soruları çek (is_golden alanıyla birlikte)
         $table_all = $wpdb->prefix . 'ql_all_questions';
-       $past_questions = $wpdb->get_results($wpdb->prepare("SELECT question_text, answer_text, vector_data FROM $table_all WHERE model_code = %s AND vector_data IS NOT NULL ORDER BY created_date DESC LIMIT 500", $model_code));
+       $past_questions = $wpdb->get_results($wpdb->prepare("SELECT question_text, answer_text, vector_data, is_golden FROM $table_all WHERE model_code = %s AND vector_data IS NOT NULL ORDER BY is_golden DESC, created_date DESC LIMIT 500", $model_code));
 
         // C. Matematiksel Benzerlik Yarışması (Skorlama)
         $scored_questions = [];
@@ -193,6 +193,7 @@ $api_key = self::decrypt_data($encrypted_key);
         // D. En yüksek puanlı (en benzer) 3 eski soruyu seç
         usort($scored_questions, function($a, $b) { return $b['score'] <=> $a['score']; });
         $top_3 = array_slice($scored_questions, 0, 3);
+        $highest_score = !empty($top_3) ? $top_3[0]['score'] : 0;
 
         // E. Veritabanından Ürün Adını ve Manuel Bilgisini (RAG) Çek
         $table_knowledge = $wpdb->prefix . 'ql_product_knowledge';
@@ -219,10 +220,11 @@ $api_key = self::decrypt_data($encrypted_key);
         $prompt .= "🟡 2. ADIM (ÜRÜN BİLGİSİ - İLK KONTROL NOKTASI):\nEğer sorunun cevabı aşağıdaki özel ürün açıklamasında (kurallarında) varsa SADECE bu bilgiyi kullanarak mağaza diline göre cevapla:\n\"{$product_info}\"\n\n";
         
         if(!empty($top_3)) {
-            $prompt .= "🟢 3. ADIM (GEÇMİŞ CEVAPLAR - İKİNCİ KONTROL NOKTASI):\nEğer 2. adımdaki bilgiler soruyu çözmüyorsa, aşağıdaki geçmiş cevapları referans al. (Kötü hitapları temizle, net bilgiyi al ve mağaza diline uyarla):\n";
+            $prompt .= "🟢 3. ADIM (GEÇMİŞ CEVAPLAR - İKİNCİ KONTROL NOKTASI):\nEğer 2. adımdaki bilgiler soruyu çözmüyorsa, aşağıdaki geçmiş cevapları referans al. NOT: 'ALTIN SORU' olarak işaretlenenler en doğru ve güncel bilgilerdir, onlara öncelik ver:\n";
             foreach($top_3 as $index => $t3) {
-                if($t3['score'] > 0.70) { // Sadece benzerliği yüksek olanları dahil et
-                    $prompt .= "- Eski Soru: " . $t3['q'] . " | Eski Cevap: " . $t3['a'] . "\n";
+                $prefix = (isset($t3['is_golden']) && $t3['is_golden']) ? "⭐ [ALTIN SORU] " : "- ";
+                if($t3['score'] > 0.70) {
+                    $prompt .= $prefix . "Eski Soru: " . $t3['q'] . " | Eski Cevap: " . $t3['a'] . "\n";
                 }
             }
             $prompt .= "\n";
@@ -278,11 +280,17 @@ $api_key = self::decrypt_data($encrypted_key);
             if (isset($data['usageMetadata'])) {
                 self::log_api_cost('AKILLI_YZ_CEVAP', $data['usageMetadata']);
             }
-            return $data['candidates'][0]['content']['parts'][0]['text'];
+            return [
+                'text' => $data['candidates'][0]['content']['parts'][0]['text'],
+                'score' => $highest_score
+            ];
         }
 
         // 4. Beklenmeyen garip bir JSON geldiyse ne olduğunu görelim
-        return "⚠️ Bilinmeyen Yapı: Google'dan gelen cevap okunamadı. Veri: " . wp_strip_all_tags($body_str);
+        return [
+            'text' => "⚠️ Bilinmeyen Yapı: Google'dan gelen cevap okunamadı.",
+            'score' => 0
+        ];
     }
 
     // --- GÜVENLİK (ŞİFRELEME) MOTORU ---

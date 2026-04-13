@@ -31,6 +31,10 @@ class QualityLife_AI_Core {
             if(empty($has_barcode)) {
                 $wpdb->query("ALTER TABLE $table ADD barcode varchar(100) NULL AFTER model_code");
             }
+            $has_golden = $wpdb->get_results("SHOW COLUMNS FROM $table LIKE 'is_golden'");
+            if(empty($has_golden)) {
+                $wpdb->query("ALTER TABLE $table ADD is_golden tinyint(1) DEFAULT 0 AFTER vector_data");
+            }
         }
 
        // Modülleri Başlat

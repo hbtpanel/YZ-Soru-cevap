@@ -12,30 +12,68 @@ class QualityLife_AJAX_Handlers {
         add_action( 'wp_ajax_ql_fetch_training_products', [ $this, 'ajax_fetch_training_products' ] );
         add_action( 'wp_ajax_ql_save_product_rule', [ $this, 'ajax_save_product_rule' ] );
         add_action( 'wp_ajax_ql_sync_trendyol_products', [ $this, 'ajax_sync_trendyol_products' ] );
+        add_action( 'wp_ajax_ql_check_waiting_questions', [ $this, 'ajax_check_waiting_questions' ] );
+        add_action( 'wp_ajax_ql_toggle_golden', [ $this, 'ajax_toggle_golden' ] );
     }
 
    public function ajax_ask_ai() {
         check_ajax_referer('ql_ajax_nonce', 'security');
-        
-       $question = sanitize_textarea_field($_POST['question']);
+        $question = sanitize_textarea_field($_POST['question']);
         $barcode = sanitize_text_field($_POST['barcode']);
         $store_id = isset($_POST['store_id']) ? sanitize_text_field($_POST['store_id']) : '';
         
-        // Mağaza ID'sini de gönderiyoruz ki doğru kişiliği seçsin!
         $ans = QualityLife_API_Services::ask_gemini_with_vector($question, $barcode, $store_id);
         
-        wp_send_json_success(['answer' => $ans]);
+        if (is_array($ans)) {
+            wp_send_json_success(['answer' => $ans['text'], 'score' => $ans['score']]);
+        } else {
+            wp_send_json_success(['answer' => $ans, 'score' => 0]);
+        }
     }
 
-    public function ajax_send_answer() {
+  public function ajax_send_answer() {
         check_ajax_referer('ql_ajax_nonce', 'security');
+        global $wpdb;
         $stores = get_option('ql_trendyol_stores', []);
-        $store = $stores[sanitize_text_field($_POST['store_id'])] ?? null;
+        $store_id = sanitize_text_field($_POST['store_id']);
+        $store = $stores[$store_id] ?? null;
         if(!$store) wp_send_json_error();
 
         $trendyol_secret = QualityLife_API_Services::decrypt_data($store['secret']);
-        $result = QualityLife_API_Services::send_trendyol_answer($_POST['store_id'], $store['key'], $trendyol_secret, sanitize_text_field($_POST['q_id']), sanitize_textarea_field($_POST['answer']));
-        $result ? wp_send_json_success() : wp_send_json_error();
+        $q_id = sanitize_text_field($_POST['q_id']);
+        $answer = sanitize_textarea_field($_POST['answer']);
+        
+        $result = QualityLife_API_Services::send_trendyol_answer($store_id, $store['key'], $trendyol_secret, $q_id, $answer);
+        
+        if ($result) {
+            // SESSİZ ÖĞRENME (AUTO-GOLDEN): Gönderilen cevabı anında vektörleyip arşive kazıyoruz!
+            $table = $wpdb->prefix . 'ql_all_questions';
+            $q_text = sanitize_textarea_field($_POST['q_text'] ?? '');
+            $barcode = sanitize_text_field($_POST['barcode'] ?? '');
+            $p_name = sanitize_text_field($_POST['p_name'] ?? '');
+            
+            if (!empty($q_text)) {
+                $combined_text = "Soru: " . $q_text . " Cevap: " . $answer;
+                $vector_data = QualityLife_API_Services::get_text_embedding($combined_text);
+                $vector_json = isset($vector_data['values']) ? wp_json_encode($vector_data['values']) : null;
+
+                $wpdb->insert($table, [
+                    'trendyol_id'   => $q_id,
+                    'store_id'      => $store_id,
+                    'product_name'  => $p_name,
+                    'model_code'    => $barcode,
+                    'question_text' => $q_text,
+                    'answer_text'   => $answer,
+                    'status'        => 'ANSWERED',
+                    'created_date'  => current_time('mysql'),
+                    'vector_data'   => $vector_json,
+                    'is_golden'     => 1 // Otomatik Altın Kural!
+                ]);
+            }
+            wp_send_json_success();
+        } else {
+            wp_send_json_error();
+        }
     }
 
     public function ajax_test_store() {
@@ -398,5 +436,28 @@ class QualityLife_AJAX_Handlers {
         }
 
         wp_send_json_success($msg);
+    }
+    public function ajax_check_waiting_questions() {
+        check_ajax_referer('ql_ajax_nonce', 'security');
+        $stores = get_option('ql_trendyol_stores', []);
+        $store_id_filter = isset($_POST['store_id']) ? sanitize_text_field($_POST['store_id']) : 'all';
+        
+        $total_waiting = 0;
+        foreach($stores as $sid => $s) {
+            if ($store_id_filter !== 'all' && $store_id_filter !== $sid) continue;
+            $trendyol_secret = QualityLife_API_Services::decrypt_data($s['secret']);
+            $qs = QualityLife_API_Services::get_trendyol_questions($sid, $s['key'], $trendyol_secret);
+            if (is_array($qs)) $total_waiting += count($qs);
+        }
+        wp_send_json_success(['count' => $total_waiting]);
+    }
+    public function ajax_toggle_golden() {
+        check_ajax_referer('ql_ajax_nonce', 'security');
+        global $wpdb;
+        $id = intval($_POST['item_id']);
+        $table = $wpdb->prefix . 'ql_all_questions';
+        $current = $wpdb->get_var($wpdb->prepare("SELECT is_golden FROM $table WHERE id = %d", $id));
+        $wpdb->update($table, ['is_golden' => $current ? 0 : 1], ['id' => $id]);
+        wp_send_json_success();
     }
 }
