@@ -361,13 +361,14 @@ class QualityLife_Admin_Pages {
             @keyframes ql-spin { 100% { transform: rotate(360deg); } }
             .ql-spin { animation: ql-spin 1s linear infinite; }
             /* Yeni Soru Animasyonu */
+   /* RADAR: Yeni Soru Animasyonu */
     @keyframes dikkatCek {
-        0%   { background-color: #d4edda; transform: scale(1.01); border-left: 5px solid #28a745; box-shadow: 0px 0px 15px rgba(40, 167, 69, 0.4); }
-        50%  { background-color: #d4edda; transform: scale(1.01); }
+        0%   { background-color: #d4edda; transform: scale(1.02); border-left: 5px solid #28a745; box-shadow: 0px 0px 15px rgba(40, 167, 69, 0.5); }
+        50%  { background-color: #d4edda; transform: scale(1.02); }
         100% { background-color: #fff; transform: scale(1); border-left: 1px solid var(--ql-border); }
     }
     .yeni-soru-animasyonu {
-        animation: dikkatCek 3s ease-out forwards;
+        animation: dikkatCek 3s ease-out forwards !important;
     }
         </style>
 
@@ -422,7 +423,7 @@ class QualityLife_Admin_Pages {
                         $store_id = esc_attr($q['ql_store_id']);
                         $rag_rule = $wpdb->get_var($wpdb->prepare("SELECT product_info FROM {$table_knowledge} WHERE barcode = %s", $barcode));
                     ?>
-                    <div class="ql-question-card" id="card_<?php echo $q_id; ?>">
+                    <div class="ql-question-card" id="ql-card-<?php echo esc_attr($q['id']); ?>">
                         <div class="ql-card-header">
                             <div class="ql-product-info">
                                 <h4 class="ql-product-title"><?php echo $product_name; ?></h4>
@@ -591,6 +592,87 @@ class QualityLife_Admin_Pages {
                 });
             });
         });
+
+        // --- AKILLI RADAR VE SES SİSTEMİ BAŞLANGICI ---
+    
+    // 1. PHP'den o an ekranda olan soru ID'lerini Javascript'in hafızasına aktar
+    let mevcutSoruIDleri = [<?php 
+        $mevcut_idler = [];
+        if(!empty($all_questions)){
+            foreach($all_questions as $q) { 
+                if(isset($q['id'])) $mevcut_idler[] = $q['id']; 
+            }
+        }
+        echo "'" . implode("','", $mevcut_idler) . "'";
+    ?>];
+
+    // 2. Sayfaya sadece 1 defa eklenecek Ses Dosyası Elementi
+    if(!document.getElementById('ql-bildirim-sesi')) {
+        let audioEl = document.createElement('audio');
+        audioEl.id = 'ql-bildirim-sesi';
+        audioEl.src = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'; // Eklenti içine atınca bu linki değiştirirsin
+        audioEl.preload = 'auto';
+        document.body.appendChild(audioEl);
+    }
+
+    // 3. ANİMASYON KONTROLÜ (Sayfa yenilendiğinde yeni soruları yeşil parlat)
+    let yeniIDler = JSON.parse(sessionStorage.getItem('ql_yeni_sorular')) || [];
+    if (yeniIDler.length > 0) {
+        yeniIDler.forEach(id => {
+            let kart = document.getElementById('ql-card-' + id);
+            if (kart) { kart.classList.add('yeni-soru-animasyonu'); }
+        });
+        sessionStorage.removeItem('ql_yeni_sorular'); // Sadece 1 kez çalışsın
+    }
+
+    // 4. SESSİZ RADAR: 60 saniyede bir kalkanın arkasından kontrol et
+    setInterval(function() {
+        let fd = new FormData();
+        fd.append('action', 'ql_check_waiting_questions');
+        fd.append('security', '<?php echo wp_create_nonce("ql_ajax_nonce"); ?>');
+        
+        // Ekranda filtre varsa o mağazayı kontrol et, yoksa hepsini
+        let filterEl = document.getElementById('store-filter'); 
+        fd.append('store_id', filterEl ? filterEl.value : 'all');
+        fd.append('force_refresh', 'false'); // Kalkan devrede! (Trendyol limiti aşılmaz)
+
+        fetch(ajaxurl, { method: 'POST', body: fd })
+        .then(res => res.json())
+        .then(response => {
+            if(response.success && response.data && response.data.questions) {
+                let yeniGelenVarMi = false;
+                let tespitEdilenYeniIDler = [];
+
+                // Yeni gelen sorularda, ekranda (mevcutSoruIDleri) olmayan bir ID var mı?
+                response.data.questions.forEach(soru => {
+                    let sId = soru.id ? soru.id.toString() : '';
+                    if (sId && !mevcutSoruIDleri.includes(sId)) {
+                        yeniGelenVarMi = true;
+                        tespitEdilenYeniIDler.push(sId);
+                    }
+                });
+
+                // EĞER GERÇEKTEN YENİ BİR SORU DÜŞTÜYSE
+                if (yeniGelenVarMi) {
+                    // Sesi çal (Ding!)
+                    let ses = document.getElementById('ql-bildirim-sesi');
+                    if(ses) {
+                        let playPromise = ses.play();
+                        if (playPromise !== undefined) {
+                            playPromise.catch(error => { console.log("Tarayıcı otomatik sesi engelledi, sayfaya tıklamak gerekiyor."); });
+                        }
+                    }
+                    
+                    // Sayfa yenilendikten sonra hangi kartların parlayacağını hafızaya al
+                    sessionStorage.setItem('ql_yeni_sorular', JSON.stringify(tespitEdilenYeniIDler));
+                    
+                    // Personelin sesi duyabilmesi için 1 saniye bekleyip sayfayı yenile (Kartlar otomatik yeşil gelecek)
+                    setTimeout(() => { window.location.reload(); }, 1000);
+                }
+            }
+        });
+    }, 60000); // 60.000 ms = Tam 60 Saniye
+    // --- AKILLI RADAR VE SES SİSTEMİ BİTİŞİ ---
         </script>
         <?php
     }
