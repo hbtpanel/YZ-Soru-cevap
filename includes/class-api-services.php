@@ -176,24 +176,34 @@ $api_key = self::decrypt_data($encrypted_key);
         $table_all = $wpdb->prefix . 'ql_all_questions';
        $past_questions = $wpdb->get_results($wpdb->prepare("SELECT question_text, answer_text, vector_data, is_golden FROM $table_all WHERE model_code = %s AND vector_data IS NOT NULL ORDER BY is_golden DESC, created_date DESC LIMIT 500", $model_code));
 
-        // C. Matematiksel Benzerlik Yarışması (Skorlama)
+      // C. Matematiksel Benzerlik Yarışması (Skorlama) ve Filtreleme
         $scored_questions = [];
         foreach($past_questions as $pq) {
             $old_vector = json_decode($pq->vector_data, true);
             if(is_array($old_vector)) {
                 $score = self::cosine_similarity($new_vector, $old_vector);
-                $scored_questions[] = [
-                    'score' => $score,
-                    'q' => $pq->question_text,
-                    'a' => $pq->answer_text
-                ];
+                
+                // SADECE %70 benzerlik barajını geçenleri havuza al (Altın veya Normal fark etmez)
+                if ($score > 0.70) {
+                    $scored_questions[] = [
+                        'score' => $score,
+                        'q' => $pq->question_text,
+                        'a' => $pq->answer_text,
+                        'is_golden' => $pq->is_golden
+                    ];
+                }
             }
         }
 
-        // D. En yüksek puanlı (en benzer) 3 eski soruyu seç
-        usort($scored_questions, function($a, $b) { return $b['score'] <=> $a['score']; });
-        $top_3 = array_slice($scored_questions, 0, 3);
-        $highest_score = !empty($top_3) ? $top_3[0]['score'] : 0;
+        // D. Benzer olanlar arasından, öncelik Altın Sorular (is_golden) olacak şekilde en iyi 20 soruyu sırala
+        usort($scored_questions, function($a, $b) { 
+            if ($a['is_golden'] != $b['is_golden']) {
+                return $b['is_golden'] <=> $a['is_golden']; 
+            }
+            return $b['score'] <=> $a['score']; 
+        });
+        $top_20 = array_slice($scored_questions, 0, 20);
+        $highest_score = !empty($top_20) ? $top_20[0]['score'] : 0;
 
         // E. Veritabanından Ürün Adını ve Manuel Bilgisini (RAG) Çek
         $table_knowledge = $wpdb->prefix . 'ql_product_knowledge';
@@ -224,13 +234,12 @@ $api_key = self::decrypt_data($encrypted_key);
         
         $prompt .= "🟡 2. ADIM (ÜRÜN BİLGİSİ - İLK KONTROL NOKTASI):\nEğer sorunun cevabı aşağıdaki özel ürün açıklamasında (kurallarında) varsa SADECE bu bilgiyi kullanarak mağaza diline göre cevapla:\n\"{$product_info}\"\n\n";
         
-        if(!empty($top_3)) {
+      if(!empty($top_20)) {
             $prompt .= "🟢 3. ADIM (GEÇMİŞ CEVAPLAR - İKİNCİ KONTROL NOKTASI):\nEğer 2. adımdaki bilgiler soruyu çözmüyorsa, aşağıdaki geçmiş cevapları referans al. NOT: 'ALTIN SORU' olarak işaretlenenler en doğru ve güncel bilgilerdir, onlara öncelik ver:\n";
-            foreach($top_3 as $index => $t3) {
-                $prefix = (isset($t3['is_golden']) && $t3['is_golden']) ? "⭐ [ALTIN SORU] " : "- ";
-                if($t3['score'] > 0.70) {
-                    $prompt .= $prefix . "Eski Soru: " . $t3['q'] . " | Eski Cevap: " . $t3['a'] . "\n";
-                }
+            foreach($top_20 as $index => $t) {
+                $prefix = (!empty($t['is_golden'])) ? "⭐ [ALTIN SORU] " : "- ";
+                // Zaten yukarıda filtrelediğimiz için doğrudan ekliyoruz
+                $prompt .= $prefix . "Eski Soru: " . $t['q'] . " | Eski Cevap: " . $t['a'] . "\n";
             }
             $prompt .= "\n";
         }

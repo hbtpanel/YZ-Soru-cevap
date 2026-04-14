@@ -96,6 +96,8 @@ class QualityLife_Cron_Jobs {
                             'store_id'      => $store_id,
                             'product_name'  => $q['productName'],
                             'model_code'    => $q['productMainId'],
+                            'image_url'     => isset($q['imageUrl']) ? $q['imageUrl'] : '',
+                            'customer_name' => isset($q['userName']) ? $q['userName'] : 'Müşteri',
                             'question_text' => $q['text'],
                             'answer_text'   => $q['answer']['text'] ?? '',
                             'status'        => $q['status'],

@@ -413,23 +413,32 @@ class QualityLife_Admin_Pages {
             <?php else: ?>
                 <div id="ask-all-status" style="margin-bottom:15px; font-weight:bold; color:var(--ql-primary);"></div>
                 <div class="ql-questions-grid">
-                    <?php 
+                   <?php 
                     $table_knowledge = $wpdb->prefix . 'ql_product_knowledge';
                     foreach($all_questions as $q): 
                         $q_id = esc_attr($q['id']);
                         $text = esc_html($q['text']);
                         $product_name = esc_html($q['productName']);
+                        $img_url = isset($q['imageUrl']) ? esc_url($q['imageUrl']) : 'https://cdn.dribbble.com/users/3512533/screenshots/14167910/media/c901c34a2e5c830607611e041bd526eb.jpg';
+                        $customer = isset($q['userName']) ? esc_html($q['userName']) : 'Müşteri';
+                        $ty_link = "https://www.trendyol.com/sr?q=" . (isset($q['productMainId']) ? esc_attr($q['productMainId']) : '');
                         $barcode = isset($q['productMainId']) ? esc_attr($q['productMainId']) : '';
                         $store_id = esc_attr($q['ql_store_id']);
                         $rag_rule = $wpdb->get_var($wpdb->prepare("SELECT product_info FROM {$table_knowledge} WHERE barcode = %s", $barcode));
                     ?>
                     <div class="ql-question-card" id="ql-card-<?php echo esc_attr($q['id']); ?>">
-                        <div class="ql-card-header">
-                            <div class="ql-product-info">
-                                <h4 class="ql-product-title"><?php echo $product_name; ?></h4>
-                                <span class="ql-model-badge">Model: <?php echo $barcode; ?></span>
+                        <div class="ql-card-header" style="display:flex; gap:15px; align-items:center; position:relative;">
+                            <a href="<?php echo $ty_link; ?>" target="_blank" style="flex-shrink:0;" title="Trendyol'da Görüntüle">
+                                <img src="<?php echo $img_url; ?>" style="width:60px; height:60px; border-radius:10px; object-fit:contain; background:#fff; border:1px solid #e2e8f0; box-shadow: 0 2px 5px rgba(0,0,0,0.05); transition: 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+                            </a>
+                            <div class="ql-product-info" style="flex-grow:1;">
+                                <h4 class="ql-product-title" style="margin-bottom:4px; font-size:15px; padding-right:0;"><?php echo $product_name; ?></h4>
+                                <div style="display:flex; gap:10px; align-items:center;">
+                                    <span class="ql-model-badge" style="font-size:11px; color:#64748b;">Barkod: <?php echo $barcode; ?></span>
+                                    <span style="font-size:11px; background:#f1f5f9; padding:3px 8px; border-radius:6px; font-weight:600; color:#475569;">👤 <?php echo $customer; ?></span>
+                                </div>
                             </div>
-                            <span class="ql-store-badge"><?php echo esc_html($q['ql_store_name']); ?></span>
+                            <span class="ql-store-badge" style="top:15px; right:15px;"><?php echo esc_html($q['ql_store_name']); ?></span>
                         </div>
 
                         <div class="ql-card-body">
@@ -971,7 +980,18 @@ class QualityLife_Admin_Pages {
                                 <?php endif; ?>
                             </div>
                         </div>
-                       <strong style="color: var(--ql-primary); font-size: 15px; margin-bottom: 10px;"><?php echo esc_html($q->product_name); ?></strong>
+                       <div style="display:flex; gap:15px; margin-bottom: 15px; align-items:flex-start;">
+                            <?php $archive_img = !empty($q->image_url) ? esc_url($q->image_url) : 'https://cdn.dribbble.com/users/3512533/screenshots/14167910/media/c901c34a2e5c830607611e041bd526eb.jpg'; ?>
+                            <a href="https://www.trendyol.com/sr?q=<?php echo esc_attr($q->model_code); ?>" target="_blank" style="flex-shrink:0;">
+                               <img src="<?php echo $archive_img; ?>" style="width:50px; height:50px; border-radius:8px; object-fit:contain; background:#fff; border:1px solid #e2e8f0;">
+                            </a>
+                            <div>
+                                <strong style="color: var(--ql-primary); font-size: 14px; display:block; line-height:1.4;"><?php echo esc_html($q->product_name); ?></strong>
+                                <?php if(!empty($q->customer_name)): ?>
+                                    <span style="font-size:11px; background:#f1f5f9; padding:2px 6px; border-radius:4px; font-weight:600; color:#64748b; margin-top:5px; display:inline-block;">👤 <?php echo esc_html($q->customer_name); ?></span>
+                                <?php endif; ?>
+                            </div>
+                        </div>
                         
                         <?php if ($q->status === 'SYNCED' || $q->question_text === 'OTOMATIK SENKRONIZASYON'): ?>
                             <div style="background: #fff8e1; padding: 15px; border-radius: 8px; margin-bottom: 15px; font-size: 13px; border-left: 4px solid #ffc107; flex-grow: 1; color: #856404; display: flex; flex-direction: column; justify-content: center;">

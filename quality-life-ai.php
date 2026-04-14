@@ -35,6 +35,12 @@ class QualityLife_AI_Core {
             if(empty($has_golden)) {
                 $wpdb->query("ALTER TABLE $table ADD is_golden tinyint(1) DEFAULT 0 AFTER vector_data");
             }
+            // YENİ: Resim ve Müşteri Sütunları Kontrolü
+            $has_image = $wpdb->get_results("SHOW COLUMNS FROM $table LIKE 'image_url'");
+            if(empty($has_image)) {
+                $wpdb->query("ALTER TABLE $table ADD image_url varchar(500) NULL AFTER barcode");
+                $wpdb->query("ALTER TABLE $table ADD customer_name varchar(100) NULL AFTER image_url");
+            }
         }
 
        // Modülleri Başlat
