@@ -41,6 +41,11 @@ class QualityLife_AI_Core {
                 $wpdb->query("ALTER TABLE $table ADD image_url varchar(500) NULL AFTER barcode");
                 $wpdb->query("ALTER TABLE $table ADD customer_name varchar(100) NULL AFTER image_url");
             }
+            // YENİ: Direkt Ürün Linki
+            $has_url = $wpdb->get_results("SHOW COLUMNS FROM $table LIKE 'product_url'");
+            if(empty($has_url)) {
+                $wpdb->query("ALTER TABLE $table ADD product_url varchar(500) NULL AFTER image_url");
+            }
         }
 
        // Modülleri Başlat

@@ -421,7 +421,7 @@ class QualityLife_Admin_Pages {
                         $product_name = esc_html($q['productName']);
                         $img_url = isset($q['imageUrl']) ? esc_url($q['imageUrl']) : 'https://cdn.dribbble.com/users/3512533/screenshots/14167910/media/c901c34a2e5c830607611e041bd526eb.jpg';
                         $customer = isset($q['userName']) ? esc_html($q['userName']) : 'Müşteri';
-                        $ty_link = "https://www.trendyol.com/sr?q=" . (isset($q['productMainId']) ? esc_attr($q['productMainId']) : '');
+                        $ty_link = !empty($q['webUrl']) ? esc_url($q['webUrl']) : "https://www.trendyol.com/sr?q=" . (isset($q['productMainId']) ? esc_attr($q['productMainId']) : '');
                         $barcode = isset($q['productMainId']) ? esc_attr($q['productMainId']) : '';
                         $store_id = esc_attr($q['ql_store_id']);
                         $rag_rule = $wpdb->get_var($wpdb->prepare("SELECT product_info FROM {$table_knowledge} WHERE barcode = %s", $barcode));
@@ -435,7 +435,7 @@ class QualityLife_Admin_Pages {
                                 <h4 class="ql-product-title" style="margin-bottom:4px; font-size:15px; padding-right:0;"><?php echo $product_name; ?></h4>
                                 <div style="display:flex; gap:10px; align-items:center;">
                                     <span class="ql-model-badge" style="font-size:11px; color:#64748b;">Barkod: <?php echo $barcode; ?></span>
-                                    <span style="font-size:11px; background:#f1f5f9; padding:3px 8px; border-radius:6px; font-weight:600; color:#475569;">👤 <?php echo $customer; ?></span>
+                                    <span style="font-size:11px; background:#f1f5f9; padding:3px 8px; border-radius:6px; font-weight:600; color:#475569;">👤 <?php echo isset($q['userName']) ? esc_html($q['userName']) : 'Gizli Müşteri'; ?></span>
                                 </div>
                             </div>
                             <span class="ql-store-badge" style="top:15px; right:15px;"><?php echo esc_html($q['ql_store_name']); ?></span>
@@ -696,17 +696,49 @@ class QualityLife_Admin_Pages {
                 <button type="button" id="btn-sync-products" class="button button-primary" style="background: #2271b1;">🔄 Trendyol'dan Ürünleri Güncelle</button>
             </div>
 
-            <div style="background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 20px; display: flex; gap: 10px;">
-                <input type="text" id="ql-product-search" placeholder="Barkod veya Ürün Adı ile ara..." style="flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 16px;">
+           <style>
+                .ql-toast { min-width: 250px; padding: 15px 20px; border-radius: 8px; color: white; font-weight: 600; font-size: 14px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); display: flex; align-items: center; gap: 10px; animation: qlSlideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards; cursor: pointer; line-height: 1.5; }
+                .ql-toast.success { background: #10b981; }
+                .ql-toast.error { background: #ef4444; }
+                @keyframes qlSlideIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+                @keyframes qlSlideOut { from { transform: translateX(0); opacity: 1; } to { transform: translateX(150%); opacity: 0; } }
+                
+                .ql-tooltip { position: relative; display: inline-block; cursor: help; }
+                .ql-tooltip .ql-tooltiptext { visibility: hidden; width: max-content; max-width: 280px; background-color: #1e293b; color: #fff; text-align: left; border-radius: 8px; padding: 10px 14px; position: absolute; z-index: 10; bottom: 125%; left: 50%; transform: translateX(-50%); opacity: 0; transition: opacity 0.3s; font-size: 12px; font-weight: normal; line-height: 1.5; white-space: normal; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+                .ql-tooltip:hover .ql-tooltiptext { visibility: visible; opacity: 1; }
+                
+                /* Mobil Uyumlu Grid Yapısı */
+                .ql-rag-header { display: grid; grid-template-columns: 1fr 1fr 1fr 2fr 1.5fr 1fr; background: #f8f9fa; padding: 15px; font-weight: bold; border-bottom: 1px solid #eee; gap: 10px; }
+                .ql-rag-row { display: grid; grid-template-columns: 1fr 1fr 1fr 2fr 1.5fr 1fr; padding: 15px; border-bottom: 1px solid #eee; align-items: center; gap: 10px; transition: 0.2s; }
+                .ql-rag-row:hover { background: #f8fafc; }
+                @media (max-width: 900px) {
+                    .ql-rag-header { display: none; }
+                    .ql-rag-row { display: flex; flex-direction: column; align-items: flex-start; padding: 20px; gap: 12px; border: 1px solid #e2e8f0; margin: 10px; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+                    .ql-rag-row > div { width: 100%; display: flex; justify-content: space-between; align-items: center; }
+                    .ql-rag-row > div::before { content: attr(data-label); font-weight: 600; color: #64748b; font-size: 12px; margin-right: 15px; }
+                    .ql-rag-row > div:nth-child(4) { flex-direction: row; justify-content: flex-start; gap: 10px; }
+                    .ql-rag-row > div:nth-child(4)::before { display: none; }
+                    .ql-rag-row > div:last-child { justify-content: flex-end; margin-top: 10px; border-top: 1px dashed #e2e8f0; padding-top: 15px; }
+                    .ql-rag-row > div:last-child::before { display: none; }
+                }
+            </style>
+            
+            <div id="ql-toast-container" style="position: fixed; bottom: 20px; right: 20px; z-index: 999999; display: flex; flex-direction: column; gap: 10px;"></div>
+
+            <div style="background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 15px; align-items: center;">
+                <input type="text" id="ql-product-search" placeholder="Barkod veya Ürün Adı ile ara..." style="flex: 1; min-width: 250px; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 15px; outline:none;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 600; background: #fff1f2; color: #be123c; padding: 10px 15px; border-radius: 8px; border: 1px solid #fecdd3; transition: 0.2s;">
+                    <input type="checkbox" id="ql-filter-untrained" style="margin:0; width: 16px; height: 16px;"> ⚠️ Sadece Eğitimsizleri Göster
+                </label>
             </div>
 
            <div style="background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 2fr 1.5fr 1fr; background: #f8f9fa; padding: 15px; font-weight: bold; border-bottom: 1px solid #eee; gap: 10px;">
+                <div class="ql-rag-header">
                     <div>Mağaza</div>
                     <div>Barkod</div>
                     <div>Model Kodu</div>
                     <div>Ürün Adı</div>
-                    <div>Öğrenilmiş Kural</div>
+                    <div>Durum</div>
                     <div style="text-align: right;">İşlem</div>
                 </div>
                 <div id="ql-product-items">
@@ -732,17 +764,30 @@ class QualityLife_Admin_Pages {
         document.addEventListener('DOMContentLoaded', function() {
             const container = document.getElementById('ql-product-items');
             const searchInput = document.getElementById('ql-product-search');
+            const filterUntrained = document.getElementById('ql-filter-untrained');
             const nonce = '<?php echo wp_create_nonce("ql_ajax_nonce"); ?>';
 
             let currentPage = 1;
+            
+            // YENİ: Modern Toast Sistemi
+            function showToast(message, type = 'success') {
+                const toastContainer = document.getElementById('ql-toast-container');
+                const toast = document.createElement('div');
+                toast.className = `ql-toast ${type}`;
+                toast.innerHTML = (type === 'success' ? '✅ ' : '❌ ') + message;
+                toast.onclick = () => { toast.style.animation = 'qlSlideOut 0.3s forwards'; setTimeout(() => toast.remove(), 300); };
+                toastContainer.appendChild(toast);
+                setTimeout(() => { if(toast.parentElement) toast.onclick(); }, 4000);
+            }
 
             async function fetchProducts(search = '', page = 1) {
-                container.innerHTML = '<div style="padding:40px; text-align:center;">Yükleniyor...</div>';
+                container.innerHTML = '<div style="padding:40px; text-align:center;"><span class="dashicons dashicons-update ql-spin" style="font-size:30px; color:#4f46e5;"></span></div>';
                 const fd = new FormData();
                 fd.append('action', 'ql_fetch_training_products');
                 fd.append('security', nonce);
                 fd.append('search', search);
                 fd.append('page', page);
+                fd.append('untrained_only', filterUntrained ? filterUntrained.checked : false);
 
                 try {
                     const res = await fetch(ajaxurl, { method: 'POST', body: fd });
@@ -769,16 +814,25 @@ class QualityLife_Admin_Pages {
                         });
                     });
 
-                } catch(e) { container.innerHTML = 'Hata oluştu.'; }
+                } catch(e) { container.innerHTML = '<div style="padding:40px; text-align:center; color:red;">Sunucu ile bağlantı kurulamadı.</div>'; }
             }
 
             let timeout = null;
             searchInput.addEventListener('keyup', () => {
                 clearTimeout(timeout);
-                currentPage = 1; // Yeni aramada sayfayı 1'e sıfırla
+                currentPage = 1;
                 timeout = setTimeout(() => fetchProducts(searchInput.value, currentPage), 500);
             });
+            
+            // YENİ: Filtreye tıklanınca otomatik arama yapar
+            if (filterUntrained) {
+                filterUntrained.addEventListener('change', () => {
+                    currentPage = 1;
+                    fetchProducts(searchInput.value, currentPage);
+                });
+            }
 
+            // YENİ: Kaydetme işlemi DOM Manipülasyonu ile (Sunucuyu yormaz)
             document.getElementById('btn-save-product-info').addEventListener('click', async function() {
                 const btn = this;
                 const barcode = btn.dataset.barcode;
@@ -792,16 +846,53 @@ class QualityLife_Admin_Pages {
                 fd.append('barcode', barcode);
                 fd.append('info', info);
 
-                await fetch(ajaxurl, { method: 'POST', body: fd });
-                
-                btn.disabled = false; btn.innerText = 'Kaydet ve Eğit';
-                document.getElementById('ql-edit-modal').style.display = 'none';
-                fetchProducts(searchInput.value); 
+                try {
+                    const res = await fetch(ajaxurl, { method: 'POST', body: fd });
+                    const data = await res.json();
+                    
+                    btn.disabled = false; btn.innerText = 'Kaydet ve Eğit';
+                    document.getElementById('ql-edit-modal').style.display = 'none';
+                    
+                    if (data.success) {
+                        showToast('Ürün kuralı YZ Beynine başarıyla işlendi!');
+                        
+                        // DOM Güncellemesi: Sadece tıkladığımız satırı değiştiriyoruz
+                        const badgeContainer = document.getElementById('badge-' + barcode);
+                        const editButton = document.querySelector(`.btn-edit-product[data-model="${barcode}"]`);
+                        
+                        if (badgeContainer) {
+                            if (info.trim() === '') {
+                                badgeContainer.innerHTML = '<span style="background: #fee2e2; color: #991b1b; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; border: 1px solid #fecaca;">🔴 Eğitimsiz</span>';
+                                badgeContainer.className = '';
+                            } else {
+                                const cleanInfo = info.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                                badgeContainer.innerHTML = `<span style="background: #dcfce7; color: #166534; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; border: 1px solid #bbf7d0; cursor:help;">🟢 Eğitildi</span><span class="ql-tooltiptext">${cleanInfo}</span>`;
+                                badgeContainer.className = 'ql-tooltip';
+                            }
+                        }
+                        
+                        if (editButton) {
+                            editButton.dataset.info = info; 
+                        }
+
+                        // Sadece Eğitimsizler açıksa, eğittiğimiz ürünü anında animasyonla listeden yok et
+                        if (filterUntrained.checked && info.trim() !== '') {
+                            const rowElement = document.getElementById('row-' + barcode);
+                            if(rowElement) {
+                                rowElement.style.opacity = '0';
+                                setTimeout(() => rowElement.style.display = 'none', 300);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    btn.disabled = false; btn.innerText = 'Kaydet ve Eğit';
+                    showToast('Sunucu bağlantı hatası!', 'error');
+                }
             });
 
-           fetchProducts(); // Sayfa açılınca ilk yükleme
+            fetchProducts(); 
 
-            // YENİ: TRENDYOL SENKRONİZASYON BUTONU İŞLEVİ
+            // Senkronizasyon butonu Toast entegrasyonu
             const btnSync = document.getElementById('btn-sync-products');
             if(btnSync) {
                 btnSync.addEventListener('click', async function() {
@@ -816,14 +907,15 @@ class QualityLife_Admin_Pages {
 
                     try {
                         const res = await fetch(ajaxurl, { method: 'POST', body: fd });
-                       const data = await res.json();
+                        const data = await res.json();
+                        
                         if (data.success) {
-                            alert(data.data);
+                            showToast(data.data.replace(/\n/g, '<br>'));
                         } else {
-                            alert('Hata Yakalandı:\n' + data.data);
+                            showToast('Hata: ' + data.data, 'error');
                         }
-                        fetchProducts(searchInput.value); // İşlem bitince listeyi arka planda yenile
-                    } catch (e) { alert('Hata oluştu.'); }
+                        fetchProducts(searchInput.value, currentPage); 
+                    } catch (e) { showToast('Bağlantı hatası.', 'error'); }
                     
                     this.disabled = false;
                     this.innerText = '🔄 Trendyol\'dan Ürünleri Güncelle';
@@ -982,7 +1074,8 @@ class QualityLife_Admin_Pages {
                         </div>
                        <div style="display:flex; gap:15px; margin-bottom: 15px; align-items:flex-start;">
                             <?php $archive_img = !empty($q->image_url) ? esc_url($q->image_url) : 'https://cdn.dribbble.com/users/3512533/screenshots/14167910/media/c901c34a2e5c830607611e041bd526eb.jpg'; ?>
-                            <a href="https://www.trendyol.com/sr?q=<?php echo esc_attr($q->model_code); ?>" target="_blank" style="flex-shrink:0;">
+                            <?php $ty_link = !empty($q->product_url) ? esc_url($q->product_url) : "https://www.trendyol.com/sr?q=" . esc_attr($q->model_code); ?>
+<a href="<?php echo $ty_link; ?>" target="_blank" style="flex-shrink:0;">
                                <img src="<?php echo $archive_img; ?>" style="width:50px; height:50px; border-radius:8px; object-fit:contain; background:#fff; border:1px solid #e2e8f0;">
                             </a>
                             <div>

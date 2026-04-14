@@ -169,7 +169,8 @@ class QualityLife_AJAX_Handlers {
                     'store_id'      => $store_id,
                    'product_name'  => $q['productName'],
                     'model_code'    => $q['productMainId'],
-                    'image_url'     => isset($q['imageUrl']) ? $q['imageUrl'] : '',
+                   'image_url'     => isset($q['imageUrl']) ? $q['imageUrl'] : '',
+                    'product_url'   => isset($q['webUrl']) ? $q['webUrl'] : '',
                     'customer_name' => isset($q['userName']) ? $q['userName'] : 'Müşteri',
                     'question_text' => $q['text'],
                     'answer_text'   => $q['answer']['text'] ?? '',
@@ -250,40 +251,56 @@ class QualityLife_AJAX_Handlers {
         $table_knowledge = $wpdb->prefix . 'ql_product_knowledge';
         $table_questions = $wpdb->prefix . 'ql_all_questions';
 
+       $untrained_only = isset($_POST['untrained_only']) && $_POST['untrained_only'] === 'true';
+
         $where = "WHERE 1=1";
         if(!empty($search)) {
-            $where .= " AND (product_name LIKE '%$search%' OR model_code LIKE '%$search%' OR barcode LIKE '%$search%')";
+            $where .= " AND (q.product_name LIKE '%$search%' OR q.model_code LIKE '%$search%' OR q.barcode LIKE '%$search%')";
+        }
+        if ($untrained_only) {
+            $where .= " AND (k.product_info IS NULL OR k.product_info = '')";
         }
 
-        // Toplam Ürün Sayısını Bul (Sayfalama için)
-        $total_items = $wpdb->get_var("SELECT COUNT(DISTINCT model_code) FROM $table_questions $where");
+        $total_items = $wpdb->get_var("SELECT COUNT(DISTINCT q.model_code) FROM $table_questions q LEFT JOIN $table_knowledge k ON q.model_code = k.barcode $where");
         $total_pages = ceil($total_items / $per_page);
 
-        // Limite göre ürünleri çek
-        // Resim url'sini de çekiyoruz
-        $query = "SELECT store_id, model_code, product_name, barcode, image_url FROM $table_questions $where GROUP BY model_code ORDER BY created_date DESC LIMIT $per_page OFFSET $offset";
+        $query = "SELECT q.store_id, q.model_code, q.product_name, q.barcode, q.image_url, q.product_url, k.product_info FROM $table_questions q LEFT JOIN $table_knowledge k ON q.model_code = k.barcode $where GROUP BY q.model_code ORDER BY q.created_date DESC LIMIT $per_page OFFSET $offset";
         $products = $wpdb->get_results($query);
         
         if(empty($products)) {
-            wp_send_json_success(['html' => '<div style="padding:20px; text-align:center;">Ürün bulunamadı.</div>', 'pagination' => '']);
+            wp_send_json_success(['html' => '<div style="padding:40px; text-align:center; color:#64748b; font-weight:500;">Sonuç bulunamadı. 🎉</div>', 'pagination' => '']);
         }
 
-        $html = '';
+       $html = '';
         foreach($products as $p) {
             $store_name = isset($stores[$p->store_id]) ? $stores[$p->store_id]['name'] : 'Bilinmeyen';
-            $info = $wpdb->get_var($wpdb->prepare("SELECT product_info FROM $table_knowledge WHERE barcode = %s", $p->model_code));
-            $info_excerpt = $info ? wp_trim_words($info, 8, '...') : '<span style="color:#e00000; font-weight:500;">❌ Kural Girilmemiş</span>';
+            $info = $p->product_info; 
             $info_safe = esc_attr($info);
+            $rag_img = !empty($p->image_url) ? esc_url($p->image_url) : 'https://placehold.co/100x100/f8fafc/64748b?text=Yok';
+            
+            // Badge (Rozet) ve Tooltip Mantığı
+            if (!empty($info)) {
+                $badge_html = '<div class="ql-tooltip" id="badge-'.esc_attr($p->model_code).'"><span style="background: #dcfce7; color: #166534; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; border: 1px solid #bbf7d0; cursor:help;">🟢 Eğitildi</span><span class="ql-tooltiptext">'.esc_html($info).'</span></div>';
+            } else {
+                $badge_html = '<div id="badge-'.esc_attr($p->model_code).'"><span style="background: #fee2e2; color: #991b1b; padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; border: 1px solid #fecaca;">🔴 Eğitimsiz</span></div>';
+            }
 
-            $rag_img = !empty($p->image_url) ? esc_url($p->image_url) : 'https://cdn.dribbble.com/users/3512533/screenshots/14167910/media/c901c34a2e5c830607611e041bd526eb.jpg';
-            $html .= '<div style="display: grid; grid-template-columns: 1fr 1fr 1fr 2fr 1.5fr 1fr; padding: 15px; border-bottom: 1px solid #eee; align-items: center; gap: 10px;">';
-            $html .= '<div><span style="background: #f0f6fc; color: #2271b1; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold;">🏪 ' . esc_html($store_name) . '</span></div>';
-            $html .= '<div style="font-size: 13px;">' . esc_html($p->barcode ?: '-') . '</div>';
-            $html .= '<div><strong>' . esc_html($p->model_code) . '</strong></div>';
-            $html .= '<div style="font-size: 13px; display:flex; align-items:center; gap:8px;">';
-            $html .= '<a href="https://www.trendyol.com/sr?q='.esc_attr($p->model_code).'" target="_blank" title="Trendyol\'da Aç"><img src="'.$rag_img.'" style="width:30px; height:30px; border-radius:4px; object-fit:contain; background:#fff; border:1px solid #ddd;"></a>';
-            $html .= '<span>' . esc_html($p->product_name) . '</span></div>';
-            $html .= '<div style="font-size: 13px; color: #555;">' . $info_excerpt . '</div>';
+            // Direkt link veya arama sayfası linkini belirle
+            $ty_link = !empty($p->product_url) ? esc_url($p->product_url) : "https://www.trendyol.com/sr?q=" . esc_attr($p->model_code);
+
+            $html .= '<div class="ql-rag-row" id="row-'.esc_attr($p->model_code).'">';
+            $html .= '<div data-label="Mağaza"><span style="background: #f0f6fc; color: #2271b1; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold;">🏪 ' . esc_html($store_name) . '</span></div>';
+            $html .= '<div data-label="Barkod" style="font-size: 13px;">' . esc_html($p->barcode ?: '-') . '</div>';
+            $html .= '<div data-label="Model" style="font-size: 13px; font-weight: bold;">' . esc_html($p->model_code) . '</div>';
+            $html .= '<div data-label="Ürün">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <a href="'.$ty_link.'" target="_blank" title="Trendyol\'da Aç" style="flex-shrink:0;">
+                                <img src="'.$rag_img.'" style="width:36px; height:36px; border-radius:6px; object-fit:contain; background:#fff; border:1px solid #e2e8f0;">
+                            </a>
+                            <span style="font-size: 13px; line-height:1.4;">' . esc_html($p->product_name) . '</span>
+                        </div>
+                      </div>';
+            $html .= '<div data-label="Durum">' . $badge_html . '</div>';
             $html .= '<div style="text-align: right;"><button class="button btn-edit-product" data-model="'.esc_attr($p->model_code).'" data-name="'.esc_attr($p->product_name).'" data-info="'.$info_safe.'">✏️ Eğit</button></div>';
             $html .= '</div>';
         }
@@ -346,7 +363,7 @@ class QualityLife_AJAX_Handlers {
         ];
 
         // 🚀 2. DEV OPTİMİZASYON: Veritabanındaki tüm ürünleri tek seferde RAM'e al!
-        $existing_items = $wpdb->get_results("SELECT id, model_code, barcode, product_name, store_id, image_url FROM $table_questions GROUP BY model_code");
+        $existing_items = $wpdb->get_results("SELECT id, model_code, barcode, product_name, store_id, image_url, product_url FROM $table_questions GROUP BY model_code");
         $db_by_barcode = [];
         $db_by_model = [];
         
@@ -385,8 +402,9 @@ class QualityLife_AJAX_Handlers {
                         $barcode = $p['variants'][0]['barcode'] ?? '';
                     }
                     
-                    // YENİ: Trendyol'dan Ürün Resmini Yakala
+                    // YENİ: Trendyol'dan Ürün Resmini ve Linkini Yakala
                     $image_url = '';
+                    $product_url = isset($p['productUrl']) ? $p['productUrl'] : '';
                     if (!empty($p['images']) && is_array($p['images']) && isset($p['images'][0]['url'])) {
                         $image_url = $p['images'][0]['url'];
                     }
@@ -411,14 +429,16 @@ class QualityLife_AJAX_Handlers {
                         if ($target_row->store_id !== $sid) { $stats['store']++; $is_updated = true; }
                         // YENİ: Eğer veritabanında resim yoksa, ama Trendyol'da varsa hemen ekle!
                         if (empty($target_row->image_url) && !empty($image_url)) { $stats['image']++; $is_updated = true; }
+                        // Eğer ürün linki boşsa hemen veri tabanına doldur
+                        if (empty($target_row->product_url) && !empty($product_url)) { $is_updated = true; } 
 
                         if ($is_updated) {
                             $old_model_code = $target_row->model_code;
                             $old_barcode = $target_row->barcode;
                             
                             $wpdb->query($wpdb->prepare(
-                                "UPDATE $table_questions SET product_name = %s, barcode = %s, model_code = %s, store_id = %s, image_url = %s WHERE model_code = %s OR barcode = %s",
-                                $name, $barcode, $model_code, $sid, $image_url, $old_model_code, $old_barcode
+                                "UPDATE $table_questions SET product_name = %s, barcode = %s, model_code = %s, store_id = %s, image_url = %s, product_url = %s WHERE model_code = %s OR barcode = %s",
+                                $name, $barcode, $model_code, $sid, $image_url, $product_url, $old_model_code, $old_barcode
                             ));
 
                             // RAM'deki veriyi de güncelle
@@ -427,16 +447,18 @@ class QualityLife_AJAX_Handlers {
                             $target_row->model_code = $model_code;
                             $target_row->store_id = $sid;
                             $target_row->image_url = $image_url;
+                            $target_row->product_url = $product_url;
                         }
-                    } else {
-                        // Yeni Ekle
+                   } else {
+                        // Yeni Ürün Ekle
                         $wpdb->insert($table_questions, [
                             'trendyol_id'   => 'SYNC-' . time() . '-' . rand(1000,9999),
                             'store_id'      => $sid,
                             'product_name'  => $name,
                             'model_code'    => $model_code,
                             'barcode'       => $barcode,
-                            'image_url'     => $image_url, // YENİ EKLENDİ
+                            'image_url'     => $image_url,   // RESİM EKLENDİ
+                            'product_url'   => $product_url, // LİNK EKLENDİ
                             'question_text' => 'OTOMATIK SENKRONIZASYON',
                             'answer_text'   => '',
                             'status'        => 'SYNCED',
@@ -444,7 +466,14 @@ class QualityLife_AJAX_Handlers {
                         ]);
                         
                         // Eklenen ürünü RAM'e de tanıt ki döngünün devamında tekrar eklemeye çalışmasın
-                        $new_item = (object)['product_name' => $name, 'barcode' => $barcode, 'model_code' => $model_code, 'store_id' => $sid];
+                        $new_item = (object)[
+                            'product_name' => $name, 
+                            'barcode'      => $barcode, 
+                            'model_code'   => $model_code, 
+                            'store_id'     => $sid,
+                            'image_url'    => $image_url,
+                            'product_url'  => $product_url
+                        ];
                         if (!empty($barcode)) $db_by_barcode[$barcode] = $new_item;
                         if (!empty($model_code)) $db_by_model[$model_code] = $new_item;
 
