@@ -230,7 +230,8 @@ $api_key = self::decrypt_data($encrypted_key);
             $prompt .= "Bu bilgi, aşağıdaki diğer tüm kurallardan daha önceliklidir. Cevabı buna göre şekillendir.\n\n";
         }
         
-        $prompt .= "🔴 1. ADIM (MAĞAZA DİLİ): Sana 'system' talimatı olarak verilen mağaza kişiliğine, üslubuna ve kurallarına %100 sadık kalacaksın.\n\n";
+        $prompt .= "🔴 1. ADIM (MAĞAZA DİLİ): Sana 'system' talimatı olarak verilen mağaza kişiliğine, üslubuna ve kurallarına %100 sadık kalacaksın.\n";
+        $prompt .= "👉 EK KURAL (DUYGU ANALİZİ): Müşterinin sorusundaki duygu durumunu (Öfkeli, Acil, Normal, Mutlu) analiz et ve cevabın giriş tonunu buna göre ayarla (Örn: Sinirli birine yatıştırıcı, acil sorana çok hızlı/net giriş yap).\n\n";
         
         $prompt .= "🟡 2. ADIM (ÜRÜN BİLGİSİ - İLK KONTROL NOKTASI):\nEğer sorunun cevabı aşağıdaki özel ürün açıklamasında (kurallarında) varsa SADECE bu bilgiyi kullanarak mağaza diline göre cevapla:\n\"{$product_info}\"\n\n";
         
