@@ -515,7 +515,7 @@ class QualityLife_Admin_Pages {
                 }
             }
 
-            // Yeni Soru Kontrolü
+            // Yeni Soru Kontrolü (60 Saniye Kalkanını Delen Sürüm)
             const btnCheckNew = document.getElementById('btn-check-new');
             if (btnCheckNew) {
                 btnCheckNew.addEventListener('click', async function() {
@@ -523,11 +523,26 @@ class QualityLife_Admin_Pages {
                     this.innerHTML = '<span class="dashicons dashicons-update ql-spin"></span>';
                     this.disabled = true;
                     try {
-                        const fd = new FormData(); fd.append('action', 'ql_check_waiting_questions'); fd.append('security', nonce);
+                        const fd = new FormData(); 
+                        fd.append('action', 'ql_check_waiting_questions'); 
+                        fd.append('security', nonce);
+                        
+                        // YENİ: Kalkanı zorla kır (Cache'i temizle)!
+                        fd.append('force_refresh', 'true');
+                        
+                        // YENİ: Hangi mağazada olduğumuzu gönderelim ki doğru kalkan kırılsın
+                        const urlParams = new URLSearchParams(window.location.search);
+                        fd.append('store_id', urlParams.get('store_id') || 'all');
+
                         const res = await fetch(ajaxurl, { method: 'POST', body: fd });
                         const data = await res.json();
-                        if (data.success && data.data.count != this.dataset.current) location.reload();
-                        else { this.innerHTML = '✅ Sorular Güncel'; setTimeout(() => { this.innerHTML = originalHTML; this.disabled = false; }, 2000); }
+                        
+                        if (data.success && data.data.count != this.dataset.current) {
+                            location.reload();
+                        } else { 
+                            this.innerHTML = '✅ Sorular Güncel'; 
+                            setTimeout(() => { this.innerHTML = originalHTML; this.disabled = false; }, 2000); 
+                        }
                     } catch (e) { this.innerHTML = originalHTML; this.disabled = false; }
                 });
             }
