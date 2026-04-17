@@ -16,7 +16,7 @@ class QualityLife_AJAX_Handlers {
         add_action( 'wp_ajax_ql_toggle_golden', [ $this, 'ajax_toggle_golden' ] );
     }
 
-   public function ajax_ask_ai() {
+ public function ajax_ask_ai() {
         check_ajax_referer('ql_ajax_nonce', 'security');
         global $wpdb;
         $question   = sanitize_textarea_field($_POST['question']);
