@@ -48,11 +48,25 @@ $body = [
     "content" => [ "parts" => [ ["text" => $text] ] ]
 ];
 
-        $response = wp_remote_post($url, [
-            'headers' => ['Content-Type' => 'application/json'],
-            'body'    => wp_json_encode($body),
-            'timeout' => 15
-        ]);
+       // UZMAN DOKUNUŞU: Google 429 Too Many Requests verirse çökme, 2 saniye bekle tekrar dene!
+        $max_retries = 3;
+        $attempt = 0;
+        $response = null;
+
+        while ($attempt < $max_retries) {
+            $response = wp_remote_post($url, [
+                'headers' => ['Content-Type' => 'application/json'],
+                'body'    => wp_json_encode($body),
+                'timeout' => 15
+            ]);
+
+            if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 429) {
+                $attempt++;
+                sleep(2); // 2 Saniye es ver, Google kotasını dinlendir
+                continue;
+            }
+            break; // Başarılı veya başka bir hata ise döngüden çık
+        }
 
         if (is_wp_error($response)) return ['error' => 'Sunucu dışarı çıkamıyor: ' . $response->get_error_message()];
         
@@ -247,7 +261,11 @@ $api_key = self::decrypt_data($encrypted_key);
 
         $prompt .= "🔵 4. ADIM (YAPAY ZEKA İNİSİYATİFİ - SON ÇARE):\nEğer 2. ve 3. adımlarda (Özel Ürün Bilgisi veya Geçmiş Sorular) sorunun NET bir cevabı YOKSA, genel kültürünle mantıklı bir cevap üret. ANCAK ŞU KESİN YASAKLARA UY:\n";
         $prompt .= "🚫 YASAK 1: RAG (Ürün Bilgisi) içinde yazmıyorsa ASLA kendi kendine spesifik bir rakam, ölçü (cm, mm, gr), süre veya 'x katına çıkarır' gibi garantiler uydurma.\n";
-        $prompt .= "🚫 YASAK 2: Müşteri net bir sayı/ölçü soruyorsa ve elinde bu veri yoksa, dürüst ve yuvarlak bir dil kullan (Örn: 'İçeriği sayesinde uzamasına yardımcı olur ancak net bir cm/oran verememekteyiz').\n\n";
+        $prompt .= "🚫 YASAK 2: Müşteri net bir sayı/ölçü soruyorsa ve elinde bu veri yoksa, dürüst ve yuvarlak bir dil kullan (Örn: 'İçeriği sayesinde uzamasına yardımcı olur ancak net bir cm/oran verememekteyiz').\n";
+        
+        // Uzman Dokunuşu: Trendyol Tek Cevap Kuralı
+        $prompt .= "🚫 YASAK 3 (TRENDYOL KURALI): E-ticaret sisteminde müşteriye SADECE TEK BİR KEZ cevap yazılabilir. Bu yüzden ASLA 'size dönüş yapacağız', 'departmanımıza soracağım', 'teyit edip bilgi vereceğiz', 'mesai saatleri içinde tekrar sorun' gibi sonradan dönüş vadeden sözler SÖYLEME. İçeriği tam bilmiyorsan 'Ürünümüz dermatolojik olarak test edilmiş zengin bir formüle sahiptir' gibi profesyonel ve konuyu kapatan genel bir dil kullan.\n\n";
+        
         $prompt .= "🟣 KESİN KURAL (AKICILIK): Aynı hitap kelimesini (örneğin 'efendim', 'iyi günler') cümlede iki defa asla kullanma. Frankenstein gibi eklenmiş durmasın, doğal bir insanın ağzından çıkmış gibi tek parça ve profesyonel bir metin oluştur.\n\n";
 
         $prompt .= "--- YENİ MÜŞTERİ SORUSU ---\n{$question_text}\n\nCEVAP:";
@@ -274,7 +292,21 @@ $api_key = self::decrypt_data($encrypted_key);
             "generationConfig" => [ "temperature" => 0.4 ]
         ];
 
-        $response = wp_remote_post($url, ['headers' => ['Content-Type' => 'application/json'], 'body' => wp_json_encode($body), 'timeout' => 20]);
+        // UZMAN DOKUNUŞU: Google 429 Too Many Requests verirse çökme, 2 saniye bekle tekrar dene!
+        $max_retries = 3;
+        $attempt = 0;
+        $response = null;
+
+        while ($attempt < $max_retries) {
+            $response = wp_remote_post($url, ['headers' => ['Content-Type' => 'application/json'], 'body' => wp_json_encode($body), 'timeout' => 20]);
+            
+            if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 429) {
+                $attempt++;
+                sleep(2);
+                continue;
+            }
+            break;
+        }
 
         if (is_wp_error($response)) return "Sunucu hatası: " . $response->get_error_message();
         
@@ -296,9 +328,20 @@ $api_key = self::decrypt_data($encrypted_key);
             if (isset($data['usageMetadata'])) {
                 self::log_api_cost('AKILLI_YZ_CEVAP', $data['usageMetadata']);
             }
+            
+            $final_answer = $data['candidates'][0]['content']['parts'][0]['text'];
+            $final_score = $highest_score;
+            
+            // UZMAN DOKUNUŞU: Otomatik Pilot Kalkanı (Kaçamak Cevap Radarı)
+            // Eğer YZ inat edip "dönüş yapacağız" derse, skoru anında %40'a düşür ki kırmızı yansın, otomatik GİTMESİN!
+            $lower_answer = mb_strtolower($final_answer, 'UTF-8');
+            if (preg_match('/(dönüş sağlay|departman|ilgili birim|teyit edip|daha sonra bilgi|size döneceğiz|araştırıp|mesai saatleri)/', $lower_answer)) {
+                $final_score = 0.40; 
+            }
+
             return [
-                'text' => $data['candidates'][0]['content']['parts'][0]['text'],
-                'score' => $highest_score
+                'text' => $final_answer,
+                'score' => $final_score
             ];
         }
 

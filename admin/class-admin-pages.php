@@ -300,19 +300,7 @@ class QualityLife_Admin_Pages {
         $stores = get_option('ql_trendyol_stores', []);
         $selected_seller_id = isset($_GET['store_id']) ? sanitize_text_field($_GET['store_id']) : 'all';
 
-        $all_questions = [];
-        foreach($stores as $sid => $s) {
-            if ($selected_seller_id !== 'all' && $selected_seller_id !== $sid) continue;
-            $trendyol_secret = QualityLife_API_Services::decrypt_data($s['secret']);
-            $qs = QualityLife_API_Services::get_trendyol_questions($sid, $s['key'], $trendyol_secret);
-            if (!empty($qs) && is_array($qs)) {
-                foreach($qs as $q) {
-                    $q['ql_store_name'] = $s['name'];
-                    $q['ql_store_id'] = $sid;
-                    $all_questions[] = $q;
-                }
-            }
-        }
+       
         ?>
         <style>
             :root {
@@ -366,6 +354,10 @@ class QualityLife_Admin_Pages {
             @keyframes ql-spin { 100% { transform: rotate(360deg); } }
             .ql-spin { animation: ql-spin 1s linear infinite; }
             /* Yeni Soru Animasyonu */
+            /* Skeleton Loading (Uzman Dokunuşu) */
+            .ql-skeleton-card { background: #fff; border-radius: 20px; height: 380px; position: relative; overflow: hidden; border: 1px solid var(--ql-border); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+            .ql-skeleton-card::after { content: ""; position: absolute; top: 0; left: -100%; width: 50%; height: 100%; background: linear-gradient(90deg, transparent, rgba(241, 245, 249, 0.8), transparent); animation: ql-shimmer 1.5s infinite; }
+            @keyframes ql-shimmer { 100% { left: 100%; } }
    /* RADAR: Yeni Soru Animasyonu */
     @keyframes dikkatCek {
         0%   { background-color: #d4edda; transform: scale(1.02); border-left: 5px solid #28a745; box-shadow: 0px 0px 15px rgba(40, 167, 69, 0.5); }
@@ -388,14 +380,13 @@ class QualityLife_Admin_Pages {
 
             <div class="ql-top-bar">
                 <div class="ql-action-group">
-                    <button type="button" id="btn-check-new" class="ql-btn-m ql-btn-s" data-current="<?php echo count($all_questions); ?>">
+                    <button type="button" id="btn-check-new" class="ql-btn-m ql-btn-s" data-current="0">
                         <span class="dashicons dashicons-update"></span> Kontrol Et
                     </button>
-                    <?php if(!empty($all_questions)): ?>
-                        <button type="button" id="btn-ask-all" class="ql-btn-m ql-btn-p" style="background:#6366f1;">
-                            <span class="dashicons dashicons-marker"></span> Tümünü YZ Hazırla
-                        </button>
-                    <?php endif; ?>
+                    
+                    <button type="button" id="btn-ask-all" class="ql-btn-m ql-btn-p" style="background:#10b981; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3); border: 1px solid #059669;">
+                        <span style="font-size: 16px; margin-right: 5px;">🚀</span> Otomatik Pilot (Yeşilleri Gönder)
+                    </button>
                 </div>
                 
                 <form method="get" action="">
@@ -409,103 +400,39 @@ class QualityLife_Admin_Pages {
                 </form>
             </div>
 
-            <?php if(empty($all_questions)): ?>
-                <div style="text-align:center; padding: 100px 20px; background:#fff; border-radius:30px; border: 2px dashed var(--ql-border);">
-                    <div style="font-size:50px; margin-bottom:20px;">🎉</div>
-                    <h2 style="margin:0; color:var(--ql-text-main);">Tebrikler! Bekleyen soru yok.</h2>
-                    <p style="color:var(--ql-text-muted);">Yeni sorular geldiğinde burada görünecekler.</p>
-                </div>
-            <?php else: ?>
-                <div id="ask-all-status" style="margin-bottom:15px; font-weight:bold; color:var(--ql-primary);"></div>
-                <div class="ql-questions-grid">
-                  <?php 
-                    $table_knowledge = $wpdb->prefix . 'ql_product_knowledge';
-                    $table_questions = $wpdb->prefix . 'ql_all_questions';
-                    foreach($all_questions as $q): 
-                        $q_id = esc_attr($q['id']);
-                        $text = esc_html($q['text']);
-                        $product_name = esc_html($q['productName']);
-                        $customer = isset($q['userName']) ? esc_html($q['userName']) : 'Müşteri';
-                        $barcode = isset($q['productMainId']) ? esc_attr($q['productMainId']) : '';
-                        $store_id = esc_attr($q['ql_store_id']);
-                        $rag_rule = $wpdb->get_var($wpdb->prepare("SELECT product_info FROM {$table_knowledge} WHERE barcode = %s", $barcode));
-                        
-                        // YENİ: Zekice! API resim/link yollamadıysa, senkronize edilmiş kendi veritabanımızdan çek!
-                        $db_media = $wpdb->get_row($wpdb->prepare("SELECT image_url, product_url FROM {$table_questions} WHERE model_code = %s AND image_url != '' LIMIT 1", $barcode));
-                        
-                        $img_url = !empty($q['imageUrl']) ? esc_url($q['imageUrl']) : ($db_media && !empty($db_media->image_url) ? esc_url($db_media->image_url) : 'https://placehold.co/100x100/f8fafc/64748b?text=Gorsel+Yok');
-                        $ty_link = !empty($q['webUrl']) ? esc_url($q['webUrl']) : ($db_media && !empty($db_media->product_url) ? esc_url($db_media->product_url) : "https://www.trendyol.com/sr?q=" . $barcode);
-                    ?>
-                    <div class="ql-question-card" id="ql-card-<?php echo esc_attr($q['id']); ?>">
-                        <div class="ql-card-header" style="display:flex; gap:15px; align-items:center; position:relative;">
-                            <a href="<?php echo $ty_link; ?>" target="_blank" style="flex-shrink:0;" title="Trendyol'da Görüntüle">
-                                <img src="<?php echo $img_url; ?>" style="width:60px; height:60px; border-radius:10px; object-fit:contain; background:#fff; border:1px solid #e2e8f0; box-shadow: 0 2px 5px rgba(0,0,0,0.05); transition: 0.2s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
-                            </a>
-                            <div class="ql-product-info" style="flex-grow:1;">
-                                <h4 class="ql-product-title" style="margin-bottom:4px; font-size:15px; padding-right:0;"><?php echo $product_name; ?></h4>
-                                <div style="display:flex; gap:10px; align-items:center;">
-                                    <span class="ql-model-badge" style="font-size:11px; color:#64748b;">Barkod: <?php echo $barcode; ?></span>
-                                    <span style="font-size:11px; background:#f1f5f9; padding:3px 8px; border-radius:6px; font-weight:600; color:#475569;">👤 <?php echo isset($q['userName']) ? esc_html($q['userName']) : 'Gizli Müşteri'; ?></span>
-                                </div>
-                            </div>
-                            <span class="ql-store-badge" style="top:15px; right:15px;"><?php echo esc_html($q['ql_store_name']); ?></span>
-                        </div>
-
-                        <div class="ql-card-body">
-                            <div class="ql-q-box">
-                                <span class="ql-q-label">Soru</span>
-                                <?php echo $text; ?>
-                            </div>
-
-                           <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-                                <button type="button" class="ql-btn-m ql-btn-s" onclick="document.getElementById('rag_container_<?php echo $q_id; ?>').style.display = document.getElementById('rag_container_<?php echo $q_id; ?>').style.display === 'none' ? 'block' : 'none'" style="font-size: 11px; padding: 6px 12px;">🧠 Bilgi Düzenle</button>
-                                <button type="button" class="ql-btn-m ql-btn-s" onclick="document.getElementById('note_container_<?php echo $q_id; ?>').style.display = document.getElementById('note_container_<?php echo $q_id; ?>').style.display === 'none' ? 'block' : 'none'" style="font-size: 11px; padding: 6px 12px; border-color: #cbd5e1; background: #f1f5f9;">💡 Özel Not Ekle</button>
-                            </div>
-
-                            <div class="ql-rag-box" id="rag_container_<?php echo $q_id; ?>" style="display: none;">
-                                <div style="display:flex; justify-content:space-between; align-items:center;">
-                                    <span style="font-size:10px; font-weight:900; color:#92400e; text-transform:uppercase;">🧠 Ürün Bilgisi (Hafıza)</span>
-                                    <span id="rag_status_<?php echo $q_id; ?>" style="font-size:10px; font-weight:bold; color:var(--ql-success);"></span>
-                                </div>
-                                <div class="ql-rag-input-group">
-                                    <input type="text" id="rag_<?php echo $q_id; ?>" class="ql-rag-input" value="<?php echo esc_attr($rag_rule); ?>" placeholder="Kalıcı kural girin...">
-                                    <button type="button" class="ql-btn-save btn-save-rag" data-barcode="<?php echo $barcode; ?>" data-id="<?php echo $q_id; ?>">💾</button>
-                                </div>
-                            </div>
-
-                            <div id="note_container_<?php echo $q_id; ?>" style="display: none; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 12px; padding: 12px; margin-bottom: 15px;">
-                                <label style="font-size: 10px; font-weight: 800; color: #0369a1; display: block; margin-bottom: 5px;">💡 BU SORUYA ÖZEL NOT (Hafızaya eklenir)</label>
-                                <textarea id="note_<?php echo $q_id; ?>" style="width: 100%; border: 1px solid #7dd3fc; border-radius: 8px; font-size: 12px; padding: 8px;" rows="2" placeholder="Örn: Bu ürün kedi için uygun değildir de."></textarea>
-                            </div>
-
-                            <div id="score_box_<?php echo $q_id; ?>" class="ql-score-pill"></div>
-                            <textarea id="ans_<?php echo $q_id; ?>" class="ql-ans-textarea" placeholder="Yapay zeka cevabı hazırlayın..."></textarea>
-                        </div>
-
-                        <div class="ql-card-footer">
-                            <button type="button" class="ql-btn-m ql-btn-s btn-ask" style="flex:1; justify-content:center;" 
-                                data-id="<?php echo $q_id; ?>" data-barcode="<?php echo $barcode; ?>" data-q="<?php echo esc_attr($text); ?>" data-store="<?php echo $store_id; ?>">
-                                ✨ Hazırla
-                            </button>
-                            <button type="button" class="ql-btn-m ql-btn-p btn-send" style="flex:1.5; justify-content:center;" 
-                                data-id="<?php echo $q_id; ?>" data-store="<?php echo $store_id; ?>" data-barcode="<?php echo $barcode; ?>" data-q="<?php echo esc_attr($text); ?>" data-pname="<?php echo esc_attr($product_name); ?>">
-                                🚀 Gönder
-                            </button>
-                        </div>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-            <?php endif; ?>
+            <div id="ask-all-status" style="margin-bottom:15px; font-weight:bold; color:var(--ql-primary);"></div>
+            <div class="ql-questions-grid" id="ql-dynamic-questions-grid">
+                <div class="ql-skeleton-card"></div>
+                <div class="ql-skeleton-card"></div>
+                <div class="ql-skeleton-card"></div>
+                <div class="ql-skeleton-card"></div>
+                <div class="ql-skeleton-card"></div>
+                <div class="ql-skeleton-card"></div>
+            </div>
         </div>
 
+       
         <script>
         document.addEventListener('DOMContentLoaded', function() {
             const nonce = '<?php echo wp_create_nonce("ql_ajax_nonce"); ?>';
+            const grid = document.getElementById('ql-dynamic-questions-grid');
+            let mevcutSoruIDleri = []; // Akıllı Radar için
+            let gonderilenSoruIDleri = []; // UZMAN DOKUNUŞU: Trendyol API gecikmesini önlemek için yerel kara liste
 
-            // Trafik Lambası
+            // --- SES KİLİDİ AÇICI (Zorunlu Tarayıcı Politikası) ---
+            let audioUnlocked = false;
+            document.body.addEventListener('click', function() {
+                if(!audioUnlocked) {
+                    let ses = document.getElementById('ql-bildirim-sesi');
+                    if (ses) { ses.play().then(() => { ses.pause(); ses.currentTime = 0; }).catch(()=>{}); }
+                    audioUnlocked = true;
+                }
+            }, { once: true });
+
+            // Trafik Lambası Skoru
             function updateScoreUI(id, score) {
                 const box = document.getElementById('score_box_' + id);
-                const card = document.getElementById('card_' + id);
+                const card = document.getElementById('ql-card-' + id);
                 box.style.display = 'block';
                 if(score >= 0.85) {
                     box.style.background = '#dcfce7'; box.style.color = '#166534'; box.innerHTML = '🟢 %' + Math.round(score*100) + ' Uyum (Altın)';
@@ -519,7 +446,288 @@ class QualityLife_Admin_Pages {
                 }
             }
 
-            // Yeni Soru Kontrolü (60 Saniye Kalkanını Delen Sürüm)
+           // 1. AJAX: Sayfa Açıldığında Soruları Çek
+            async function loadPendingQuestions() {
+                const urlParams = new URLSearchParams(window.location.search);
+                const fd = new FormData();
+                fd.append('action', 'ql_load_pending_cards');
+                fd.append('security', nonce);
+                fd.append('store_id', urlParams.get('store_id') || 'all');
+                
+                // UZMAN DOKUNUŞU: Yazıları Koruma Kalkanı (Sayfa arkada yenilense bile notların silinmez)
+                const userInputs = {};
+                if (grid) {
+                    grid.querySelectorAll('textarea, input[type="text"]').forEach(el => {
+                        if (el.id && el.value.trim() !== '') {
+                            userInputs[el.id] = el.value;
+                        }
+                    });
+                }
+
+                try {
+                    const res = await fetch(ajaxurl, { method: 'POST', body: fd });
+                    const data = await res.json();
+                    if(data.success) {
+                        grid.innerHTML = data.data.html; 
+                        // Veri tiplerini güvenli şekilde String'e (Metne) çeviriyoruz
+                        mevcutSoruIDleri = (data.data.ids || []).map(String);
+                        
+                        // UZMAN DOKUNUŞU: Trendyol API gecikmesinden dolayı tekrar gelen, ama aslında BİZİM gönderdiğimiz kartları anında gizle!
+                        gonderilenSoruIDleri.forEach(gid => {
+                            const ghostCard = document.getElementById('ql-card-' + gid);
+                            if (ghostCard) {
+                                ghostCard.style.display = 'none';
+                                ghostCard.remove();
+                            }
+                        });
+
+                        const visibleCards = grid.querySelectorAll('.ql-question-card').length;
+                        const btnCheck = document.getElementById('btn-check-new');
+                        if(btnCheck) btnCheck.dataset.current = visibleCards;
+
+                        // Trendyol yalan söylüyorsa ve aslında ekranda hiç kart kalmadıysa boş ekranı (Tebrikler) getir
+                        if (visibleCards === 0 && gonderilenSoruIDleri.length > 0) {
+                            grid.innerHTML = '<div style="grid-column: 1 / -1; text-align:center; padding: 100px 20px; background:#fff; border-radius:30px; border: 2px dashed #cbd5e1;"><div style="font-size:50px; margin-bottom:20px;">🎉</div><h2 style="margin:0; color:#1e293b;">Tebrikler! Bekleyen soru yok.</h2><p style="color:#64748b;">Yeni sorular geldiğinde burada görünecekler.</p></div>';
+                        }
+
+                        // UZMAN DOKUNUŞU: Yedeklenen notları yeni kartların içine anında geri koy
+                        for (const [id, value] of Object.entries(userInputs)) {
+                            const el = document.getElementById(id);
+                            if (el) {
+                                el.value = value;
+                                // Eğer not kutusu veya rag kutusu doluysa, kapanmışsa bile açık tut
+                                if (id.startsWith('note_')) {
+                                    const container = document.getElementById('note_container_' + id.split('_')[1]);
+                                    if(container) container.style.display = 'block';
+                                }
+                                if (id.startsWith('rag_')) {
+                                    const container = document.getElementById('rag_container_' + id.split('_')[1]);
+                                    if(container) container.style.display = 'block';
+                                }
+                            }
+                        }
+                    }
+                } catch(e) { grid.innerHTML = '<div style="color:red; text-align:center; grid-column: 1/-1;">Bağlantı hatası oluştu.</div>'; }
+            }
+            loadPendingQuestions();
+
+            // 2. EVENT DELEGATION: Sadece Ana Grid Dinlenir (Yüksek Performans)
+            grid.addEventListener('click', async function(e) {
+                
+                // --- RAG & NOT KUTUSU AÇ/KAPA ---
+                if (e.target.closest('.btn-toggle-rag')) {
+                    const targetId = e.target.closest('.btn-toggle-rag').dataset.target;
+                    const el = document.getElementById(targetId);
+                    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+                }
+                if (e.target.closest('.btn-toggle-note')) {
+                    const targetId = e.target.closest('.btn-toggle-note').dataset.target;
+                    const el = document.getElementById(targetId);
+                    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+                }
+
+                // --- RAG KAYDET ---
+                if (e.target.closest('.btn-save-rag')) {
+                    const btn = e.target.closest('.btn-save-rag');
+                    const id = btn.dataset.id; const status = document.getElementById('rag_status_' + id);
+                    btn.disabled = true;
+                    const fd = new FormData(); fd.append('action', 'ql_save_product_rule'); fd.append('security', nonce);
+                    fd.append('barcode', btn.dataset.barcode); fd.append('info', document.getElementById('rag_' + id).value);
+                    await fetch(ajaxurl, { method: 'POST', body: fd });
+                    status.innerHTML = 'KAYDEDİLDİ'; btn.disabled = false;
+                    setTimeout(() => status.innerHTML = '', 2000);
+                }
+
+                // --- YAPAY ZEKAYA HAZIRLAT (TEKİL) ---
+                if (e.target.closest('.btn-ask')) {
+                    const btn = e.target.closest('.btn-ask');
+                    const id = btn.dataset.id; const box = document.getElementById('ans_' + id);
+                    const originalText = btn.innerHTML; btn.disabled = true; btn.innerHTML = '⏳...';
+                    const fd = new FormData(); fd.append('action', 'ql_ask_ai'); fd.append('security', nonce);
+                    fd.append('question', btn.dataset.q); fd.append('barcode', btn.dataset.barcode); fd.append('store_id', btn.dataset.store);
+                    fd.append('quick_note', document.getElementById('note_' + id) ? document.getElementById('note_' + id).value : '');
+                    try {
+                        const res = await fetch(ajaxurl, { method: 'POST', body: fd });
+                        const data = await res.json();
+                       if(data.success) { 
+                            box.value = data.data.answer; 
+                            box.dataset.original = data.data.answer; // Uzman Dokunuşu: Orijinal YZ cevabını gizlice HTML içine gömüyoruz
+                            updateScoreUI(id, data.data.score); 
+                        }
+                    } catch(err) {}
+                    btn.disabled = false; btn.innerHTML = originalText;
+                }
+
+                // --- GÖNDER VE DOM'DAN SİL (GHOST CARD ÇÖZÜMÜ & OTOMATİK RAG) ---
+                if (e.target.closest('.btn-send')) {
+                    const btn = e.target.closest('.btn-send');
+                    const id = btn.dataset.id; 
+                    const box = document.getElementById('ans_' + id);
+                    const answer = box.value.trim();
+                    
+                    // Dedektör: YZ'nin metni ile personelin gönderdiği metin farklı mı?
+                    const originalAnswer = box.dataset.original || '';
+                    const isModified = (originalAnswer !== '' && answer !== originalAnswer);
+
+                    if(!answer) return alert('Cevap boş!');
+                    btn.disabled = true; btn.innerHTML = '🚀...';
+                    const fd = new FormData(); fd.append('action', 'ql_send_answer'); fd.append('security', nonce);
+                    fd.append('q_id', id); fd.append('answer', answer); fd.append('store_id', btn.dataset.store);
+                    fd.append('q_text', btn.dataset.q); fd.append('barcode', btn.dataset.barcode); fd.append('p_name', btn.dataset.pname);
+                    try {
+                        const res = await fetch(ajaxurl, { method: 'POST', body: fd });
+                       const data = await res.json();
+                        if(data.success) { 
+                            gonderilenSoruIDleri.push(id.toString()); // Kara listeye ekle ki radar tekrar getirmesin
+                            
+                            // Pürüzsüz DOM Silme Animasyonu
+                            const card = document.getElementById('ql-card-' + id);
+                            card.style.transform = 'scale(0.9) translateY(-20px)';
+                            card.style.opacity = '0';
+                            
+                           setTimeout(() => { 
+                                card.remove(); 
+                                
+                                // Radar sayacını manuel olarak düşür (Radar körlüğünü engeller)
+                                const btnCheck = document.getElementById('btn-check-new');
+                                if (btnCheck) btnCheck.dataset.current = Math.max(0, parseInt(btnCheck.dataset.current) - 1);
+                                
+                                // Ekranda hiç kart kalmadıysa boş ekranı (Tebrikler) getir
+                                if (grid.querySelectorAll('.ql-question-card').length === 0) {
+                                    loadPendingQuestions();
+                                }
+
+                                // Uzman Dokunuşu: HTML çakışmalarını önlemek için ID'leri benzersiz yapıyoruz
+                                if (isModified) {
+                                    const mId = 'modal_' + id;
+                                    const modalHtml = `
+                                    <div id="${mId}" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(15,23,42,0.7); z-index:99999; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(4px);">
+                                        <div style="background:#fff; padding:25px; border-radius:16px; width:90%; max-width:450px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.1);">
+                                            <h3 style="margin-top:0; font-size:18px; color:#1e293b; display:flex; align-items:center; gap:8px;">🧠 YZ İçin Yeni Kural</h3>
+                                            <p style="font-size:13px; color:#64748b; margin-bottom:15px;">YZ taslağını manuel olarak düzelttiniz. Sistemin bu ürün için yeni bir kural öğrenmesini istiyorsanız aşağıya yazın:</p>
+                                            <textarea id="input_${mId}" rows="3" style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:10px; font-size:13px; margin-bottom:15px; font-family:inherit;">${answer}</textarea>
+                                            <div style="display:flex; justify-content:flex-end; gap:10px;">
+                                                <button onclick="document.getElementById('${mId}').remove()" style="padding:10px 15px; border:none; background:#f1f5f9; color:#64748b; border-radius:8px; cursor:pointer; font-weight:600;">Geç</button>
+                                                <button id="save_${mId}" style="padding:10px 15px; border:none; background:#10b981; color:#fff; border-radius:8px; cursor:pointer; font-weight:600;">Öğren ve Kaydet</button>
+                                            </div>
+                                        </div>
+                                    </div>`;
+                                    document.body.insertAdjacentHTML('beforeend', modalHtml);
+                                    
+                                    document.getElementById('save_' + mId).addEventListener('click', function() {
+                                        const yeniKural = document.getElementById('input_' + mId).value.trim();
+                                        if(yeniKural) {
+                                            const fdRag = new FormData(); 
+                                            fdRag.append('action', 'ql_save_product_rule'); 
+                                            fdRag.append('security', nonce);
+                                            fdRag.append('barcode', btn.dataset.barcode); 
+                                            fdRag.append('info', yeniKural);
+                                            fetch(ajaxurl, { method: 'POST', body: fdRag });
+                                        }
+                                        document.getElementById(mId).remove();
+                                    });
+                                }
+                            }, 300);
+                        } else { btn.disabled = false; btn.innerHTML = 'Hata!'; }
+                    } catch(err) { btn.disabled = false; btn.innerHTML = '🚀 Gönder'; }
+                }
+            });
+
+           // 3. TOPLU HAZIRLA VE OTOMATİK PİLOT BUTONU
+            const btnAskAll = document.getElementById('btn-ask-all');
+            if (btnAskAll) {
+                btnAskAll.addEventListener('click', async function() {
+                    const buttons = grid.querySelectorAll('.btn-ask');
+                    const statusLabel = document.getElementById('ask-all-status');
+                    
+                    if(buttons.length === 0) return alert('İşlem yapılacak soru bulunmuyor!');
+                    
+                    if(!confirm('🚀 Otomatik Pilot Devreye Giriyor!\n\nSistem ' + buttons.length + ' soru için YZ cevabı üretecek.\nUyum skoru %85 ve üzeri (Yeşil) olan KUSURSUZ cevaplar OTOMATİK olarak Trendyol\'a gönderilecektir.\nRiskli (Sarı/Kırmızı) olanlar ise onayınıza bırakılacaktır.\n\nBaşlayalım mı?')) return;
+                    
+                    this.disabled = true;
+                    let basariliGonderim = 0;
+                    let onayBekleyen = 0;
+
+                    for(let i = 0; i < buttons.length; i++) {
+                        const btn = buttons[i];
+                        statusLabel.innerHTML = `⏳ ${i + 1} / ${buttons.length} işleniyor... (Otomatik Gönderilen: <span style="color:#10b981;">${basariliGonderim}</span>)`;
+                        
+                        const id = btn.dataset.id; 
+                        const box = document.getElementById('ans_' + id);
+                        
+                        // Zaten doluysa (personel manuel yazdıysa) es geç
+                        if (box.value.trim() !== '') {
+                            onayBekleyen++;
+                            continue;
+                        }
+                        
+                        btn.disabled = true; btn.innerHTML = '⏳...';
+                        
+                        try {
+                            // 1. Adım: YZ'den Cevap İste
+                            const fd = new FormData(); fd.append('action', 'ql_ask_ai'); fd.append('security', nonce);
+                            fd.append('question', btn.dataset.q); fd.append('barcode', btn.dataset.barcode); fd.append('store_id', btn.dataset.store);
+                            const res = await fetch(ajaxurl, { method: 'POST', body: fd });
+                            const data = await res.json();
+                            
+                            if(data.success) { 
+                                box.value = data.data.answer; 
+                                box.dataset.original = data.data.answer;
+                                updateScoreUI(id, data.data.score); 
+
+                                // 2. Adım: OTOMATİK PİLOT KONTROLÜ (Skor %85 veya üzeriyse Trendyol'a Ateşle)
+                                if (data.data.score >= 0.85) {
+                                    statusLabel.innerHTML = `🚀 ${i + 1}. Soru kusursuz! Trendyol'a gönderiliyor...`;
+                                    
+                                    const btnSend = document.querySelector(`.btn-send[data-id="${id}"]`);
+                                    const fdSend = new FormData(); fdSend.append('action', 'ql_send_answer'); fdSend.append('security', nonce);
+                                    fdSend.append('q_id', id); fdSend.append('answer', data.data.answer); fdSend.append('store_id', btn.dataset.store);
+                                    fdSend.append('q_text', btn.dataset.q); fdSend.append('barcode', btn.dataset.barcode); fdSend.append('p_name', btnSend.dataset.pname);
+                                    
+                                    const sendRes = await fetch(ajaxurl, { method: 'POST', body: fdSend });
+                                    const sendData = await sendRes.json();
+                                    
+                                    if(sendData.success) {
+                                        basariliGonderim++;
+                                        gonderilenSoruIDleri.push(id.toString()); // Kara listeye ekle ki radar tekrar getirmesin
+                                        const card = document.getElementById('ql-card-' + id);
+                                        card.style.transform = 'scale(0.9) translateY(-20px)';
+                                        card.style.opacity = '0';
+                                        setTimeout(() => { card.remove(); }, 300); // Hayalet Kartı Temizle
+                                    }
+                                } else {
+                                    // Skor düşükse sadece ekrana basıp personelin kontrol etmesini bekle
+                                    onayBekleyen++;
+                                }
+                            }
+                        } catch (e) {}
+                        
+                        btn.disabled = false; btn.innerHTML = '✨ Hazırla';
+                        
+                        // API Limitlerine (429 Too Many Requests) takılmamak için 4 saniye es ver
+                        if (i < buttons.length - 1) await new Promise(r => setTimeout(r, 4000));
+                    }
+                    
+                   statusLabel.innerHTML = `✅ Operasyon Tamamlandı! <strong>${basariliGonderim}</strong> soru otomatik gönderildi. <strong>${onayBekleyen}</strong> soru onayınızı bekliyor.`; 
+                    
+                    // Uzman Dokunuşu: Radar sayacını sayfayı yenilemeden düşür, böylece taslak cevapların silinmez
+                    const btnCheck = document.getElementById('btn-check-new');
+                    if (btnCheck) btnCheck.dataset.current = Math.max(0, parseInt(btnCheck.dataset.current) - basariliGonderim);
+
+                    // Ekranda hiç soru kalmadıysa tebrikler ekranını güvenle getir
+                    if (grid.querySelectorAll('.ql-question-card').length === 0) {
+                        loadPendingQuestions();
+                    }
+
+                    // İşlem yazısını 7 saniye sonra ekrandan temizle
+                    setTimeout(() => { statusLabel.innerHTML = ''; }, 7000);
+
+                    this.disabled = false;
+                });
+            }
+            
+
+            // 4. RADAR: YENİ SORU KONTROLÜ (SONSUZ DÖNGÜ ÇÖZÜLDÜ)
             const btnCheckNew = document.getElementById('btn-check-new');
             if (btnCheckNew) {
                 btnCheckNew.addEventListener('click', async function() {
@@ -530,19 +738,20 @@ class QualityLife_Admin_Pages {
                         const fd = new FormData(); 
                         fd.append('action', 'ql_check_waiting_questions'); 
                         fd.append('security', nonce);
-                        
-                        // YENİ: Kalkanı zorla kır (Cache'i temizle)!
                         fd.append('force_refresh', 'true');
-                        
-                        // YENİ: Hangi mağazada olduğumuzu gönderelim ki doğru kalkan kırılsın
-                        const urlParams = new URLSearchParams(window.location.search);
-                        fd.append('store_id', urlParams.get('store_id') || 'all');
+                        fd.append('store_id', new URLSearchParams(window.location.search).get('store_id') || 'all');
 
                         const res = await fetch(ajaxurl, { method: 'POST', body: fd });
                         const data = await res.json();
                         
                         if (data.success && data.data.count != this.dataset.current) {
-                            location.reload();
+                            grid.innerHTML = '<div class="ql-skeleton-card"></div><div class="ql-skeleton-card"></div><div class="ql-skeleton-card"></div>';
+                            
+                            // Uzman Dokunuşu: Await eklenerek işlemin bitmesi beklendi
+                            await loadPendingQuestions(); 
+                            
+                            this.innerHTML = '✅ Güncellendi';
+                            setTimeout(() => { this.innerHTML = originalHTML; this.disabled = false; }, 2000);
                         } else { 
                             this.innerHTML = '✅ Sorular Güncel'; 
                             setTimeout(() => { this.innerHTML = originalHTML; this.disabled = false; }, 2000); 
@@ -550,163 +759,53 @@ class QualityLife_Admin_Pages {
                     } catch (e) { this.innerHTML = originalHTML; this.disabled = false; }
                 });
             }
-
-            // Toplu Bot (Trafik Lambası Uyumlu)
-            const btnAskAll = document.getElementById('btn-ask-all');
-            if (btnAskAll) {
-                btnAskAll.addEventListener('click', async function() {
-                    const buttons = document.querySelectorAll('.btn-ask');
-                    const statusLabel = document.getElementById('ask-all-status');
-                    if(!confirm(buttons.length + ' soru için YZ cevabı üretilecek. Devam edilsin mi?')) return;
-                    this.disabled = true;
-                    for(let i = 0; i < buttons.length; i++) {
-                        const btn = buttons[i];
-                        statusLabel.innerHTML = `⏳ ${i + 1} / ${buttons.length} hazırlanıyor...`;
-                        const id = btn.dataset.id; const box = document.getElementById('ans_' + id);
-                        if (box.value.trim() !== '') continue;
-                        btn.disabled = true;
-                        try {
-                            const fd = new FormData(); fd.append('action', 'ql_ask_ai'); fd.append('security', nonce);
-                            fd.append('question', btn.dataset.q); fd.append('barcode', btn.dataset.barcode); fd.append('store_id', btn.dataset.store);
-                            const res = await fetch(ajaxurl, { method: 'POST', body: fd });
-                            const data = await res.json();
-                            if(data.success) { box.value = data.data.answer; updateScoreUI(id, data.data.score); }
-                        } catch (e) {}
-                        btn.disabled = false;
-                        if (i < buttons.length - 1) await new Promise(r => setTimeout(r, 4000));
-                    }
-                    statusLabel.innerHTML = '✅ Tüm taslaklar hazır.'; this.disabled = false;
-                });
+            
+           // --- SESSİZ RADAR VE SES SİSTEMİ BAŞLANGICI (ESKİ KOD MANTIĞI) ---
+            if(!document.getElementById('ql-bildirim-sesi')) {
+                let audioEl = document.createElement('audio');
+                audioEl.id = 'ql-bildirim-sesi';
+                audioEl.src = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
+                audioEl.preload = 'auto';
+                document.body.appendChild(audioEl);
             }
 
-            // Kaydet (RAG)
-            document.querySelectorAll('.btn-save-rag').forEach(btn => {
-                btn.addEventListener('click', async function() {
-                    const id = this.dataset.id; const status = document.getElementById('rag_status_' + id);
-                    this.disabled = true;
-                    const fd = new FormData(); fd.append('action', 'ql_save_product_rule'); fd.append('security', nonce);
-                    fd.append('barcode', this.dataset.barcode); fd.append('info', document.getElementById('rag_' + id).value);
-                    await fetch(ajaxurl, { method: 'POST', body: fd });
-                    status.innerHTML = 'KAYDEDİLDİ'; this.disabled = false;
-                    setTimeout(() => status.innerHTML = '', 2000);
-                });
-            });
+            setInterval(async function() {
+                try {
+                    let fd = new FormData();
+                    fd.append('action', 'ql_check_waiting_questions');
+                    fd.append('security', nonce);
+                    fd.append('store_id', new URLSearchParams(window.location.search).get('store_id') || 'all');
+                    fd.append('force_refresh', 'false');
 
-            // Tekil Hazırla
-            document.querySelectorAll('.btn-ask').forEach(btn => {
-                btn.addEventListener('click', async function() {
-                    const id = this.dataset.id; const box = document.getElementById('ans_' + id);
-                    const originalText = this.innerHTML; this.disabled = true; this.innerHTML = '⏳...';
-                    const fd = new FormData(); fd.append('action', 'ql_ask_ai'); fd.append('security', nonce);
-                    fd.append('question', this.dataset.q); fd.append('barcode', this.dataset.barcode); fd.append('store_id', this.dataset.store);
-                    fd.append('quick_note', document.getElementById('note_' + id).value);
-                    try {
-                        const res = await fetch(ajaxurl, { method: 'POST', body: fd });
-                        const data = await res.json();
-                        if(data.success) { box.value = data.data.answer; updateScoreUI(id, data.data.score); }
-                    } catch (e) {}
-                    this.disabled = false; this.innerHTML = originalText;
-                });
-            });
+                    const res = await fetch(ajaxurl, { method: 'POST', body: fd });
+                    const response = await res.json();
 
-            // Gönder
-            document.querySelectorAll('.btn-send').forEach(btn => {
-                btn.addEventListener('click', async function() {
-                    const id = this.dataset.id; const answer = document.getElementById('ans_' + id).value.trim();
-                    if(!answer) return alert('Cevap boş!');
-                    this.disabled = true; this.innerHTML = '🚀...';
-                    const fd = new FormData(); fd.append('action', 'ql_send_answer'); fd.append('security', nonce);
-                    fd.append('q_id', id); fd.append('answer', answer); fd.append('store_id', this.dataset.store);
-                    fd.append('q_text', this.dataset.q); fd.append('barcode', this.dataset.barcode); fd.append('p_name', this.dataset.pname);
-                    try {
-                        const res = await fetch(ajaxurl, { method: 'POST', body: fd });
-                        const data = await res.json();
-                        if(data.success) { this.closest('.ql-question-card').style.opacity = '0.3'; this.innerHTML = '✅ Gönderildi'; }
-                    } catch (e) {}
-                });
-            });
-        });
+                    if(response.success && response.data && response.data.questions) {
+                        let yeniGelenVarMi = false;
+                        
+                        response.data.questions.forEach(soru => {
+                            let sId = soru.id ? soru.id.toString() : '';
+                            // Eğer bu soru daha önce bizim manuel gönderdiğimiz bir soruysa yoksay (Trendyol gecikmesi)
+                            if (sId && !mevcutSoruIDleri.includes(sId) && !gonderilenSoruIDleri.includes(sId)) { 
+                                yeniGelenVarMi = true; 
+                            }
+                        });
 
-        // --- AKILLI RADAR VE SES SİSTEMİ BAŞLANGICI ---
-    
-    // 1. PHP'den o an ekranda olan soru ID'lerini Javascript'in hafızasına aktar
-    let mevcutSoruIDleri = [<?php 
-        $mevcut_idler = [];
-        if(!empty($all_questions)){
-            foreach($all_questions as $q) { 
-                if(isset($q['id'])) $mevcut_idler[] = $q['id']; 
-            }
-        }
-        echo "'" . implode("','", $mevcut_idler) . "'";
-    ?>];
-
-    // 2. Sayfaya sadece 1 defa eklenecek Ses Dosyası Elementi
-    if(!document.getElementById('ql-bildirim-sesi')) {
-        let audioEl = document.createElement('audio');
-        audioEl.id = 'ql-bildirim-sesi';
-        audioEl.src = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'; // Eklenti içine atınca bu linki değiştirirsin
-        audioEl.preload = 'auto';
-        document.body.appendChild(audioEl);
-    }
-
-    // 3. ANİMASYON KONTROLÜ (Sayfa yenilendiğinde yeni soruları yeşil parlat)
-    let yeniIDler = JSON.parse(sessionStorage.getItem('ql_yeni_sorular')) || [];
-    if (yeniIDler.length > 0) {
-        yeniIDler.forEach(id => {
-            let kart = document.getElementById('ql-card-' + id);
-            if (kart) { kart.classList.add('yeni-soru-animasyonu'); }
-        });
-        sessionStorage.removeItem('ql_yeni_sorular'); // Sadece 1 kez çalışsın
-    }
-
-    // 4. SESSİZ RADAR: 60 saniyede bir kalkanın arkasından kontrol et
-    setInterval(function() {
-        let fd = new FormData();
-        fd.append('action', 'ql_check_waiting_questions');
-        fd.append('security', '<?php echo wp_create_nonce("ql_ajax_nonce"); ?>');
-        
-        // Ekranda filtre varsa o mağazayı kontrol et, yoksa hepsini
-        let filterEl = document.getElementById('store-filter'); 
-        fd.append('store_id', filterEl ? filterEl.value : 'all');
-        fd.append('force_refresh', 'false'); // Kalkan devrede! (Trendyol limiti aşılmaz)
-
-        fetch(ajaxurl, { method: 'POST', body: fd })
-        .then(res => res.json())
-        .then(response => {
-            if(response.success && response.data && response.data.questions) {
-                let yeniGelenVarMi = false;
-                let tespitEdilenYeniIDler = [];
-
-                // Yeni gelen sorularda, ekranda (mevcutSoruIDleri) olmayan bir ID var mı?
-                response.data.questions.forEach(soru => {
-                    let sId = soru.id ? soru.id.toString() : '';
-                    if (sId && !mevcutSoruIDleri.includes(sId)) {
-                        yeniGelenVarMi = true;
-                        tespitEdilenYeniIDler.push(sId);
-                    }
-                });
-
-                // EĞER GERÇEKTEN YENİ BİR SORU DÜŞTÜYSE
-                if (yeniGelenVarMi) {
-                    // Sesi çal (Ding!)
-                    let ses = document.getElementById('ql-bildirim-sesi');
-                    if(ses) {
-                        let playPromise = ses.play();
-                        if (playPromise !== undefined) {
-                            playPromise.catch(error => { console.log("Tarayıcı otomatik sesi engelledi, sayfaya tıklamak gerekiyor."); });
+                        if (yeniGelenVarMi) {
+                            let ses = document.getElementById('ql-bildirim-sesi');
+                            if(ses) {
+                                let playPromise = ses.play();
+                                if (playPromise !== undefined) {
+                                    playPromise.catch(error => { console.log("Otomatik ses engellendi."); });
+                                }
+                            }
+                            // Eski kodda burada reload() yapılıyordu, biz modern AJAX fonksiyonumuzu çağırıyoruz
+                            loadPendingQuestions();
                         }
                     }
-                    
-                    // Sayfa yenilendikten sonra hangi kartların parlayacağını hafızaya al
-                    sessionStorage.setItem('ql_yeni_sorular', JSON.stringify(tespitEdilenYeniIDler));
-                    
-                    // Personelin sesi duyabilmesi için 1 saniye bekleyip sayfayı yenile (Kartlar otomatik yeşil gelecek)
-                    setTimeout(() => { window.location.reload(); }, 1000);
-                }
-            }
+                } catch(e) {}
+            }, 60000);
         });
-    }, 60000); // 60.000 ms = Tam 60 Saniye
-    // --- AKILLI RADAR VE SES SİSTEMİ BİTİŞİ ---
         </script>
         <?php
     }
@@ -749,7 +848,13 @@ class QualityLife_Admin_Pages {
             </style>
             
             <div id="ql-toast-container" style="position: fixed; bottom: 20px; right: 20px; z-index: 999999; display: flex; flex-direction: column; gap: 10px;"></div>
-
+<div id="ql-terminal-wrap" style="display:none; background:#0f172a; border-radius:12px; padding:15px; margin-bottom:20px; font-family:'Courier New', monospace; font-size:13px; height:250px; overflow-y:auto; box-shadow:inset 0 4px 10px rgba(0,0,0,0.5); border:1px solid #1e293b; line-height: 1.6;">
+                <div style="color:#38bdf8; margin-bottom:10px; font-weight:bold; border-bottom:1px dashed #334155; padding-bottom:8px; display:flex; justify-content:space-between;">
+                    <span>>_ YZ Sistem Terminali - Canlı İzleme</span>
+                    <span id="ql-terminal-status" style="color:#f59e0b; animation: pulse 1.5s infinite;">Bağlanıyor...</span>
+                </div>
+                <div id="ql-terminal-output" style="color:#cbd5e1; display:flex; flex-direction:column; gap:4px;"></div>
+            </div>
             <div style="background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 15px; align-items: center;">
                 <input type="text" id="ql-product-search" placeholder="Barkod veya Ürün Adı ile ara..." style="flex: 1; min-width: 250px; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 15px; outline:none;">
                 <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 600; background: #fff1f2; color: #be123c; padding: 10px 15px; border-radius: 8px; border: 1px solid #fecdd3; transition: 0.2s;">
@@ -917,30 +1022,72 @@ class QualityLife_Admin_Pages {
 
             fetchProducts(); 
 
-            // Senkronizasyon butonu Toast entegrasyonu
+            // Senkronizasyon Butonu & Canlı Terminal Motoru
             const btnSync = document.getElementById('btn-sync-products');
             if(btnSync) {
                 btnSync.addEventListener('click', async function() {
-                    if(!confirm('Tüm mağazalardaki ürünleriniz çekilecek. Bu işlem ürün sayınıza göre biraz sürebilir. Başlayalım mı?')) return;
+                    if(!confirm('Tüm mağazalardaki ürünleriniz taranacak. İzleme terminali açılıyor, başlayalım mı?')) return;
                     
                     this.disabled = true;
-                    this.innerText = '🔄 Senkronize Ediliyor...';
+                    this.innerText = '🔄 Senkronizasyon Devam Ediyor...';
                     
-                    const fd = new FormData();
-                    fd.append('action', 'ql_sync_trendyol_products');
-                    fd.append('security', nonce);
+                    const terminalWrap = document.getElementById('ql-terminal-wrap');
+                    const terminalOut = document.getElementById('ql-terminal-output');
+                    const terminalStatus = document.getElementById('ql-terminal-status');
+                    
+                    terminalWrap.style.display = 'block';
+                    terminalOut.innerHTML = '<div>> Trendyol API ile güvenli bağlantı (SSL) kuruluyor...</div>';
+                    terminalStatus.innerText = 'Çalışıyor...';
+                    terminalStatus.style.color = '#f59e0b';
+                    
+                    let isDone = false;
+                    let currentStoreId = '';
+                    let currentPageNum = 0;
+                    
+                    // Recursive (Kendi kendini çağıran) gerçek zamanlı sorgu fonksiyonu
+                    while (!isDone) {
+                        const fd = new FormData();
+                        fd.append('action', 'ql_sync_trendyol_products');
+                        fd.append('security', nonce);
+                        fd.append('current_store_id', currentStoreId);
+                        fd.append('page', currentPageNum);
 
-                    try {
-                        const res = await fetch(ajaxurl, { method: 'POST', body: fd });
-                        const data = await res.json();
-                        
-                        if (data.success) {
-                            showToast(data.data.replace(/\n/g, '<br>'));
-                        } else {
-                            showToast('Hata: ' + data.data, 'error');
+                        try {
+                            const res = await fetch(ajaxurl, { method: 'POST', body: fd });
+                            const data = await res.json();
+                            
+                            if (data.success) {
+                                // Gelen canlı logu terminale yazdır
+                                const logLine = document.createElement('div');
+                                logLine.innerHTML = data.data.log;
+                                terminalOut.appendChild(logLine);
+                                
+                                // Terminali otomatik olarak en aşağı kaydır (Matrix efekti)
+                                terminalWrap.scrollTop = terminalWrap.scrollHeight;
+                                
+                                isDone = data.data.done;
+                                currentStoreId = data.data.next_store_id;
+                                currentPageNum = data.data.next_page;
+                                
+                                // Çok hızlı akarsa tarayıcı kilitlenmesin diye çeyrek saniye es ver
+                                await new Promise(r => setTimeout(r, 250));
+                            } else {
+                                isDone = true;
+                                terminalOut.innerHTML += `<div style="color:#ef4444;">> [KRİTİK HATA] ${data.data || 'Bağlantı koptu.'}</div>`;
+                            }
+                        } catch (e) {
+                            isDone = true;
+                            terminalOut.innerHTML += `<div style="color:#ef4444;">> [AĞ HATASI] Sunucu yanıt vermedi.</div>`;
                         }
-                        fetchProducts(searchInput.value, currentPage); 
-                    } catch (e) { showToast('Bağlantı hatası.', 'error'); }
+                    }
+                    
+                    terminalStatus.innerText = 'İşlem Tamamlandı';
+                    terminalStatus.style.color = '#10b981';
+                    terminalOut.innerHTML += '<div style="color:#10b981; margin-top:10px; font-weight:bold;">> ✅ OPERASYON BAŞARIYLA TAMAMLANDI. Ürün tablosu yenileniyor...</div>';
+                    terminalWrap.scrollTop = terminalWrap.scrollHeight;
+                    
+                    showToast('Tüm ürünler senkronize edildi!');
+                    fetchProducts(searchInput.value, 1); 
                     
                     this.disabled = false;
                     this.innerText = '🔄 Trendyol\'dan Ürünleri Güncelle';
