@@ -127,7 +127,7 @@ $api_key = self::decrypt_data($encrypted_key);
         return $body['content'] ?? [];
     }
 
-  // 4. Trendyol Cevap Gönderme
+    // 4. Trendyol Cevap Gönderme
     public static function send_trendyol_answer($seller_id, $api_key, $api_secret, $question_id, $answer_text) {
         $url = "https://apigw.trendyol.com/integration/qna/sellers/{$seller_id}/questions/{$question_id}/answers";
         $response = wp_remote_post($url, [

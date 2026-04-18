@@ -12,65 +12,15 @@ class QualityLife_Admin_Pages {
         add_action( 'admin_post_ql_update_knowledge', [ $this, 'update_knowledge' ] );
     }
 
-   public function setup_admin_menus() {
-        // ANA MENÜ: İkon 'dashicons-robot' olarak kalabilir veya 'dashicons-buddicons-replies' yapılabilir. 
-        add_menu_page('YZ Eğitim ve Ayarlar', 'YZ Asistan', 'manage_options', 'ql-ai-settings', [ $this, 'page_settings' ], 'dashicons-buddicons-replies', 30);
+    public function setup_admin_menus() {
+        add_menu_page('YZ Eğitim ve Ayarlar', 'YZ Asistan', 'manage_options', 'ql-ai-settings', [ $this, 'page_settings' ], 'dashicons-robot', 30);
+        add_submenu_page('ql-ai-settings', 'Genel Bakış', '📊 Genel Bakış', 'manage_options', 'ql-ai-dashboard', [ $this, 'page_dashboard' ]);
+        add_submenu_page('ql-ai-settings', 'Bekleyen Sorular', 'Bekleyen Sorular', 'manage_options', 'ql-ai-questions', [ $this, 'page_questions' ]);
+        add_submenu_page('ql-ai-settings', 'Soru Arşivi', 'Soru Arşivi (Bot)', 'manage_options', 'ql-ai-past-questions', [ $this, 'page_past_questions' ]);
+        add_submenu_page('ql-ai-settings', 'Ürün Eğitimi (RAG)', '🧠 Ürün Eğitimi', 'manage_options', 'ql-ai-training', [$this, 'page_product_training']);
         
-        // ALT MENÜLER: İsim alanlarına (3. Parametre) HTML ile şık Dashiconlar eklendi
-        add_submenu_page(
-            'ql-ai-settings', 
-            'Genel Bakış', 
-            '<span class="dashicons dashicons-dashboard" style="font-size:16px; margin-top:3px; margin-right:4px;"></span>Genel Bakış', 
-            'manage_options', 
-            'ql-ai-dashboard', 
-            [ $this, 'page_dashboard' ]
-        );
-        
-        add_submenu_page(
-            'ql-ai-settings', 
-            'Bekleyen Sorular', 
-            '<span class="dashicons dashicons-format-chat" style="font-size:16px; margin-top:3px; margin-right:4px;"></span>Bekleyen Sorular', 
-            'manage_options', 
-            'ql-ai-questions', 
-            [ $this, 'page_questions' ]
-        );
-        
-        add_submenu_page(
-            'ql-ai-settings', 
-            'Soru Arşivi', 
-            '<span class="dashicons dashicons-archive" style="font-size:16px; margin-top:3px; margin-right:4px;"></span>Soru Arşivi', 
-            'manage_options', 
-            'ql-ai-past-questions', 
-            [ $this, 'page_past_questions' ]
-        );
-        
-        add_submenu_page(
-            'ql-ai-settings', 
-            'Ürün Eğitimi (RAG)', 
-            '<span class="dashicons dashicons-welcome-learn-more" style="font-size:16px; margin-top:3px; margin-right:4px;"></span>Ürün Eğitimi', 
-            'manage_options', 
-            'ql-ai-training', 
-            [$this, 'page_product_training']
-        );
-        
-        add_submenu_page(
-            'ql-ai-settings', 
-            'Maliyet Raporu', 
-            '<span class="dashicons dashicons-chart-line" style="font-size:16px; margin-top:3px; margin-right:4px;"></span>Maliyet Raporu', 
-            'manage_options', 
-            'ql-ai-costs', 
-            [$this, 'page_costs']
-        );
-
-        // Ayarlar sekmesini (Ana menü tıklandığında açılan ilk sayfa) gizli bir isimle veya ayar ikonuyla alt menüye ekliyoruz
-        add_submenu_page(
-            'ql-ai-settings', 
-            'Ayarlar', 
-            '<span class="dashicons dashicons-admin-settings" style="font-size:16px; margin-top:3px; margin-right:4px;"></span>API & Ayarlar', 
-            'manage_options', 
-            'ql-ai-settings', 
-            [ $this, 'page_settings' ]
-        );
+        // DÜZELTME: Sınıf içi çağrım olduğu için $this kullanıldı
+        add_submenu_page('ql-ai-settings', 'Maliyet Raporu', '💸 Maliyet Raporu', 'manage_options', 'ql-ai-costs', [$this, 'page_costs']);
     }
 
   // --- SAYFA 1: AYARLAR ---
@@ -347,31 +297,17 @@ class QualityLife_Admin_Pages {
         $selected_seller_id = isset($_GET['store_id']) ? sanitize_text_field($_GET['store_id']) : 'all';
 
         $all_questions = [];
-        
-        // MANTIK HATASI ÇÖZÜMÜ: F5 (Sayfa Yenileme) yapıldığında da 60 saniyelik kalkanı (Cache) kullan!
-        $cache_key = 'ql_waiting_qs_cache_' . $selected_seller_id;
-        $cached_data = get_transient($cache_key);
-
-        if (false !== $cached_data && isset($cached_data['questions'])) {
-            // Eğer son 60 saniye içinde veri çekilmişse, API'ye gitme, RAM'den (Cache) ver!
-            $all_questions = $cached_data['questions'];
-        } else {
-            // Kalkan süresi dolmuşsa veya ilk kez giriliyorsa Trendyol'a bağlan
-            foreach($stores as $sid => $s) {
-                if ($selected_seller_id !== 'all' && $selected_seller_id !== $sid) continue;
-                $trendyol_secret = QualityLife_API_Services::decrypt_data($s['secret']);
-                $qs = QualityLife_API_Services::get_trendyol_questions($sid, $s['key'], $trendyol_secret);
-                
-                if (!empty($qs) && is_array($qs)) {
-                    foreach($qs as $q) {
-                        $q['ql_store_name'] = $s['name'];
-                        $q['ql_store_id'] = $sid;
-                        $all_questions[] = $q;
-                    }
+        foreach($stores as $sid => $s) {
+            if ($selected_seller_id !== 'all' && $selected_seller_id !== $sid) continue;
+            $trendyol_secret = QualityLife_API_Services::decrypt_data($s['secret']);
+            $qs = QualityLife_API_Services::get_trendyol_questions($sid, $s['key'], $trendyol_secret);
+            if (!empty($qs) && is_array($qs)) {
+                foreach($qs as $q) {
+                    $q['ql_store_name'] = $s['name'];
+                    $q['ql_store_id'] = $sid;
+                    $all_questions[] = $q;
                 }
             }
-            // Çekilen veriyi 60 saniyeliğine mühürle (Sadece Javascript botu için değil, PHP sayfası için de koruma)
-            set_transient($cache_key, ['count' => count($all_questions), 'questions' => $all_questions], 60);
         }
         ?>
         <style>
@@ -432,16 +368,6 @@ class QualityLife_Admin_Pages {
         50%  { background-color: #d4edda; transform: scale(1.02); }
         100% { background-color: #fff; transform: scale(1); border-left: 1px solid var(--ql-border); }
     }
-    /* YENİ: Kartın silinme/buharlaşma animasyonu */
-            @keyframes qlFadeOutShrink {
-                0% { opacity: 1; transform: scale(1); }
-                50% { opacity: 0.5; transform: scale(0.95); }
-                100% { opacity: 0; transform: scale(0.8) translateY(-20px); margin: 0; padding: 0; height: 0; border: none; overflow: hidden; }
-            }
-            .ql-removing {
-                animation: qlFadeOutShrink 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards !important;
-                pointer-events: none;
-            }
     .yeni-soru-animasyonu {
         animation: dikkatCek 3s ease-out forwards !important;
     }
@@ -635,26 +561,12 @@ class QualityLife_Admin_Pages {
                         const id = btn.dataset.id; const box = document.getElementById('ans_' + id);
                         if (box.value.trim() !== '') continue;
                         btn.disabled = true;
-                       try {
+                        try {
                             const fd = new FormData(); fd.append('action', 'ql_ask_ai'); fd.append('security', nonce);
                             fd.append('question', btn.dataset.q); fd.append('barcode', btn.dataset.barcode); fd.append('store_id', btn.dataset.store);
-                            
-                            // YENİ: Toplu işlemde de kilit sistemini devreye sokuyoruz
-                            fd.append('q_id', id);
-                            
                             const res = await fetch(ajaxurl, { method: 'POST', body: fd });
                             const data = await res.json();
-                            
-                            if(data.success) { 
-                                box.value = data.data.answer; updateScoreUI(id, data.data.score); 
-                            } else if (data.data && data.data.code === 'ALREADY_ANSWERED') {
-                                // Başkası cevaplamış, uyarı vermeye gerek yok, kartı sessizce uçur ve sıradaki soruya geç
-                                const card = document.getElementById('ql-card-' + id);
-                                if (card) {
-                                    card.classList.add('ql-removing');
-                                    setTimeout(() => card.remove(), 500);
-                                }
-                            }
+                            if(data.success) { box.value = data.data.answer; updateScoreUI(id, data.data.score); }
                         } catch (e) {}
                         btn.disabled = false;
                         if (i < buttons.length - 1) await new Promise(r => setTimeout(r, 4000));
@@ -676,7 +588,7 @@ class QualityLife_Admin_Pages {
                 });
             });
 
-            // Tekil Hazırla (Bütçe Korumalı Sürüm)
+            // Tekil Hazırla
             document.querySelectorAll('.btn-ask').forEach(btn => {
                 btn.addEventListener('click', async function() {
                     const id = this.dataset.id; const box = document.getElementById('ans_' + id);
@@ -684,60 +596,28 @@ class QualityLife_Admin_Pages {
                     const fd = new FormData(); fd.append('action', 'ql_ask_ai'); fd.append('security', nonce);
                     fd.append('question', this.dataset.q); fd.append('barcode', this.dataset.barcode); fd.append('store_id', this.dataset.store);
                     fd.append('quick_note', document.getElementById('note_' + id).value);
-                    
-                    // YENİ: Çakışma kontrolü için soru ID'sini arka plana yolluyoruz
-                    fd.append('q_id', id); 
-                    
                     try {
                         const res = await fetch(ajaxurl, { method: 'POST', body: fd });
                         const data = await res.json();
-                        
-                        if(data.success) { 
-                            box.value = data.data.answer; updateScoreUI(id, data.data.score); 
-                            this.disabled = false; this.innerHTML = originalText;
-                        } else {
-                            // YENİ: Başkası cevaplamışsa API parası harcanmadı. Uyarı ver ve kartı uçur!
-                            if(data.data && data.data.code === 'ALREADY_ANSWERED') {
-                                alert('Geç kaldınız! 🥷 ' + data.data.message);
-                                const card = document.getElementById('ql-card-' + id);
-                                if (card) {
-                                    card.classList.add('ql-removing');
-                                    setTimeout(() => card.remove(), 500);
-                                }
-                            } else {
-                                this.disabled = false; this.innerHTML = originalText;
-                            }
-                        }
-                    } catch (e) { this.disabled = false; this.innerHTML = originalText; }
+                        if(data.success) { box.value = data.data.answer; updateScoreUI(id, data.data.score); }
+                    } catch (e) {}
+                    this.disabled = false; this.innerHTML = originalText;
                 });
             });
 
-         // Gönder (SADECE ANİMASYON - Koruma ve Uyarı Yok)
+            // Gönder
             document.querySelectorAll('.btn-send').forEach(btn => {
                 btn.addEventListener('click', async function() {
                     const id = this.dataset.id; const answer = document.getElementById('ans_' + id).value.trim();
                     if(!answer) return alert('Cevap boş!');
-                    
                     this.disabled = true; this.innerHTML = '🚀...';
-                    
                     const fd = new FormData(); fd.append('action', 'ql_send_answer'); fd.append('security', nonce);
                     fd.append('q_id', id); fd.append('answer', answer); fd.append('store_id', this.dataset.store);
                     fd.append('q_text', this.dataset.q); fd.append('barcode', this.dataset.barcode); fd.append('p_name', this.dataset.pname);
-                    
                     try {
                         const res = await fetch(ajaxurl, { method: 'POST', body: fd });
                         const data = await res.json();
-                        
-                        // KONTROL YOK, UYARI YOK! Direkt animasyonla kartı uçuruyoruz:
-                        const card = this.closest('.ql-question-card');
-                        this.innerHTML = '✅ Gönderildi';
-                        
-                        card.classList.add('ql-removing');
-                        setTimeout(() => { card.remove(); }, 500);
-                        
-                        if (typeof mevcutSoruIDleri !== 'undefined') {
-                            mevcutSoruIDleri = mevcutSoruIDleri.filter(item => item !== id.toString());
-                        }
+                        if(data.success) { this.closest('.ql-question-card').style.opacity = '0.3'; this.innerHTML = '✅ Gönderildi'; }
                     } catch (e) {}
                 });
             });
@@ -775,15 +655,16 @@ class QualityLife_Admin_Pages {
         sessionStorage.removeItem('ql_yeni_sorular'); // Sadece 1 kez çalışsın
     }
 
-    // 4. SESSİZ RADAR: 60 saniyede bir kalkanın arkasından kontrol et (Gelişmiş Çoklu Ekran Senkronu)
+    // 4. SESSİZ RADAR: 60 saniyede bir kalkanın arkasından kontrol et
     setInterval(function() {
         let fd = new FormData();
         fd.append('action', 'ql_check_waiting_questions');
         fd.append('security', '<?php echo wp_create_nonce("ql_ajax_nonce"); ?>');
         
+        // Ekranda filtre varsa o mağazayı kontrol et, yoksa hepsini
         let filterEl = document.getElementById('store-filter'); 
         fd.append('store_id', filterEl ? filterEl.value : 'all');
-        fd.append('force_refresh', 'false'); // Kalkan devrede!
+        fd.append('force_refresh', 'false'); // Kalkan devrede! (Trendyol limiti aşılmaz)
 
         fetch(ajaxurl, { method: 'POST', body: fd })
         .then(res => res.json())
@@ -791,55 +672,36 @@ class QualityLife_Admin_Pages {
             if(response.success && response.data && response.data.questions) {
                 let yeniGelenVarMi = false;
                 let tespitEdilenYeniIDler = [];
-                let sunucudakiIDler = [];
 
-                // Sunucudan gelen GÜNCEL bekleyen soru ID'lerini topla
+                // Yeni gelen sorularda, ekranda (mevcutSoruIDleri) olmayan bir ID var mı?
                 response.data.questions.forEach(soru => {
                     let sId = soru.id ? soru.id.toString() : '';
-                    if (sId) {
-                        sunucudakiIDler.push(sId);
-                        // Ekranda yoksa demek ki yeni soru
-                        if (!mevcutSoruIDleri.includes(sId)) {
-                            yeniGelenVarMi = true;
-                            tespitEdilenYeniIDler.push(sId);
-                        }
+                    if (sId && !mevcutSoruIDleri.includes(sId)) {
+                        yeniGelenVarMi = true;
+                        tespitEdilenYeniIDler.push(sId);
                     }
                 });
 
-                // YENİ MANTIK: Başkası cevaplamış mı? (Bizim ekranda var ama sunucuda artık yok)
-                let silinenVarMi = false;
-                mevcutSoruIDleri.forEach(ekranId => {
-                    if (!sunucudakiIDler.includes(ekranId)) {
-                        // Başka bir personel cevaplamış! Bu personelin ekranından da animasyonla yok et.
-                        let card = document.getElementById('ql-card-' + ekranId);
-                        if (card) {
-                            card.classList.add('ql-removing');
-                            setTimeout(() => card.remove(), 500);
-                        }
-                        silinenVarMi = true;
-                    }
-                });
-
-                // Eğer başkası cevapladıysa ve bizim ekrandan sildiysek, JS hafızamızı sunucuyla eşitle
-                if (silinenVarMi) {
-                    mevcutSoruIDleri = sunucudakiIDler;
-                }
-
-                // Yeni soru geldiyse uyarı ver ve sayfayı yenile
+                // EĞER GERÇEKTEN YENİ BİR SORU DÜŞTÜYSE
                 if (yeniGelenVarMi) {
+                    // Sesi çal (Ding!)
                     let ses = document.getElementById('ql-bildirim-sesi');
                     if(ses) {
                         let playPromise = ses.play();
                         if (playPromise !== undefined) {
-                            playPromise.catch(error => { console.log("Otomatik ses engellendi."); });
+                            playPromise.catch(error => { console.log("Tarayıcı otomatik sesi engelledi, sayfaya tıklamak gerekiyor."); });
                         }
                     }
+                    
+                    // Sayfa yenilendikten sonra hangi kartların parlayacağını hafızaya al
                     sessionStorage.setItem('ql_yeni_sorular', JSON.stringify(tespitEdilenYeniIDler));
+                    
+                    // Personelin sesi duyabilmesi için 1 saniye bekleyip sayfayı yenile (Kartlar otomatik yeşil gelecek)
                     setTimeout(() => { window.location.reload(); }, 1000);
                 }
             }
         });
-    }, 60000); // 60 Saniye
+    }, 60000); // 60.000 ms = Tam 60 Saniye
     // --- AKILLI RADAR VE SES SİSTEMİ BİTİŞİ ---
         </script>
         <?php
