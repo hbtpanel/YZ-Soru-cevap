@@ -33,7 +33,7 @@ class QualityLife_AJAX_Handlers {
         }
     }
 
-   public function ajax_ask_ai() {
+  public function ajax_ask_ai() {
         check_ajax_referer('ql_ajax_nonce', 'security');
         global $wpdb;
         $question   = sanitize_textarea_field($_POST['question']);
@@ -41,11 +41,15 @@ class QualityLife_AJAX_Handlers {
         $store_id   = isset($_POST['store_id']) ? sanitize_text_field($_POST['store_id']) : '';
         $quick_note = isset($_POST['quick_note']) ? sanitize_textarea_field($_POST['quick_note']) : '';
         
-        // OTOMATİK RAG GÜNCELLEME: Eğer not varsa kalıcı hafızaya ekle
+        // OTOMATİK RAG GÜNCELLEME VE LOGLAMA: Eğer not varsa kalıcı hafızaya ekle ve logla
         if (!empty($quick_note)) {
             $table = $wpdb->prefix . 'ql_product_knowledge';
+            $table_history = $wpdb->prefix . 'ql_product_history';
+            $table_questions = $wpdb->prefix . 'ql_all_questions';
+            
             $current_info = $wpdb->get_var($wpdb->prepare("SELECT product_info FROM $table WHERE barcode = %s", $barcode));
-            $new_info = $current_info ? $current_info . "\n" . $quick_note : $quick_note;
+            $old_content = $current_info ? $current_info : '';
+            $new_info = $current_info ? $current_info . "\n\nEk Not: " . $quick_note : $quick_note;
             
             $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM $table WHERE barcode = %s", $barcode));
             if($exists) {
@@ -53,6 +57,27 @@ class QualityLife_AJAX_Handlers {
             } else {
                 $wpdb->insert($table, ['barcode' => $barcode, 'product_info' => $new_info]);
             }
+
+            // Snapshot Verilerini Al (Log ekranında resim ve mağaza görünmesi için)
+            $product_details = $wpdb->get_row($wpdb->prepare("SELECT store_id, product_name, image_url FROM $table_questions WHERE model_code = %s OR barcode = %s LIMIT 1", $barcode, $barcode));
+            $p_name = $product_details ? $product_details->product_name : 'Bilinmeyen Ürün';
+            $i_url = $product_details ? $product_details->image_url : '';
+            $s_id = $product_details ? $product_details->store_id : $store_id; 
+            
+            $stores = get_option('ql_trendyol_stores', []);
+            $s_name = isset($stores[$s_id]) ? $stores[$s_id]['name'] : 'Genel Kural';
+
+            // İşlem geçmişine (Log) yaz
+            $wpdb->insert($table_history, [
+                'barcode' => $barcode,
+                'store_name' => $s_name,
+                'product_name' => $p_name,
+                'image_url' => $i_url,
+                'old_content' => $old_content,
+                'new_content' => $new_info,
+                'change_source' => 'Özel Not (Hızlı Hazırlama)',
+                'changed_by' => get_current_user_id()
+            ]);
         }
 
         $ans = QualityLife_API_Services::ask_gemini_with_vector($question, $barcode, $store_id, $quick_note);
