@@ -183,8 +183,8 @@ $api_key = self::decrypt_data($encrypted_key);
             if(is_array($old_vector)) {
                 $score = self::cosine_similarity($new_vector, $old_vector);
                 
-                // SADECE %70 benzerlik barajını geçenleri havuza al (Altın veya Normal fark etmez)
-                if ($score > 0.70) {
+                // SADECE %82 benzerlik barajını geçenleri havuza al (Alakasız içeriği engelle)
+                if ($score > 0.82) {
                     $scored_questions[] = [
                         'score' => $score,
                         'q' => $pq->question_text,
@@ -202,7 +202,7 @@ $api_key = self::decrypt_data($encrypted_key);
             }
             return $b['score'] <=> $a['score']; 
         });
-        $top_20 = array_slice($scored_questions, 0, 20);
+        $top_20 = array_slice($scored_questions, 0, 3); // Uzman Dokunuşu: Sadece en iyi 3 örneği ver, token maliyetini %85 düşür.
         $highest_score = !empty($top_20) ? $top_20[0]['score'] : 0;
 
         // E. Veritabanından Ürün Adını ve Manuel Bilgisini (RAG) Çek

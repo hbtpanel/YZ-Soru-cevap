@@ -4,6 +4,7 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 class QualityLife_AJAX_Handlers {
 
     public function __construct() {
+       
         add_action( 'wp_ajax_ql_ask_ai', [ $this, 'ajax_ask_ai' ] );
         add_action( 'wp_ajax_ql_send_answer', [ $this, 'ajax_send_answer' ] );
         add_action( 'wp_ajax_ql_test_store', [ $this, 'ajax_test_store' ] );
@@ -14,6 +15,20 @@ class QualityLife_AJAX_Handlers {
         add_action( 'wp_ajax_ql_sync_trendyol_products', [ $this, 'ajax_sync_trendyol_products' ] );
         add_action( 'wp_ajax_ql_check_waiting_questions', [ $this, 'ajax_check_waiting_questions' ] );
         add_action( 'wp_ajax_ql_toggle_golden', [ $this, 'ajax_toggle_golden' ] );
+        // Uzman Dokunuşu: AJAX güvenliği için admin_init kancasını kullanıyoruz (Fonksiyonlar yüklendikten sonra çalışır)
+        add_action( 'admin_init', [ $this, 'secure_ajax_endpoints' ] );
+        
+    }
+
+    public function secure_ajax_endpoints() {
+        // Sadece AJAX anında ve SADECE "ql_" ile başlayan bizim eklentimize ait isteklerde devreye girer.
+        // Böylece hbt-trendyol-profit-tracker gibi diğer eklentilerin çalışmasını bozmaz.
+        if ( defined( 'DOING_AJAX' ) && DOING_AJAX && isset($_REQUEST['action']) && strpos($_REQUEST['action'], 'ql_') === 0 ) {
+            if ( !current_user_can('manage_options') ) {
+                wp_send_json_error(['message' => 'Güvenlik Kalkanı: Bu işlem için yönetici yetkisi gerekiyor.']);
+                exit;
+            }
+        }
     }
 
    public function ajax_ask_ai() {

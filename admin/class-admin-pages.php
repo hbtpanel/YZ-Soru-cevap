@@ -13,13 +13,17 @@ class QualityLife_Admin_Pages {
     }
 
     public function setup_admin_menus() {
-        add_menu_page('YZ Eğitim ve Ayarlar', 'YZ Asistan', 'manage_options', 'ql-ai-settings', [ $this, 'page_settings' ], 'dashicons-robot', 30);
-        add_submenu_page('ql-ai-settings', 'Genel Bakış', '📊 Genel Bakış', 'manage_options', 'ql-ai-dashboard', [ $this, 'page_dashboard' ]);
-        add_submenu_page('ql-ai-settings', 'Bekleyen Sorular', 'Bekleyen Sorular', 'manage_options', 'ql-ai-questions', [ $this, 'page_questions' ]);
-        add_submenu_page('ql-ai-settings', 'Soru Arşivi', 'Soru Arşivi (Bot)', 'manage_options', 'ql-ai-past-questions', [ $this, 'page_past_questions' ]);
-        add_submenu_page('ql-ai-settings', 'Ürün Eğitimi (RAG)', '🧠 Ürün Eğitimi', 'manage_options', 'ql-ai-training', [$this, 'page_product_training']);
+     // Uzman Dokunuşu: Menü daraltıldığında (collapse) kaybolmaması ve premium görünmesi için özel Base64 SVG (Yapay Zeka Kıvılcımı) ikonu kullanıyoruz.
+        $svg_icon = 'data:image/svg+xml;base64,' . base64_encode('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"></path></svg>');
         
-        // DÜZELTME: Sınıf içi çağrım olduğu için $this kullanıldı
+        add_menu_page('YZ Eğitim ve Ayarlar', 'YZ Asistan', 'manage_options', 'ql-ai-settings', [ $this, 'page_settings' ], $svg_icon, 30);
+        
+        // Uzman Dokunuşu: İlk alt menüyü eklenti adından ayırıp "Ayarlar" yapıyoruz. Tüm menülere uyumlu ikonlar ekliyoruz.
+        add_submenu_page('ql-ai-settings', 'Ayarlar', '⚙️ Ayarlar', 'manage_options', 'ql-ai-settings', [ $this, 'page_settings' ]); 
+        add_submenu_page('ql-ai-settings', 'Genel Bakış', '📊 Genel Bakış', 'manage_options', 'ql-ai-dashboard', [ $this, 'page_dashboard' ]);
+        add_submenu_page('ql-ai-settings', 'Bekleyen Sorular', '💬 Bekleyen Sorular', 'manage_options', 'ql-ai-questions', [ $this, 'page_questions' ]);
+        add_submenu_page('ql-ai-settings', 'Soru Arşivi', '🗄️ Soru Arşivi', 'manage_options', 'ql-ai-past-questions', [ $this, 'page_past_questions' ]);
+        add_submenu_page('ql-ai-settings', 'Ürün Eğitimi (RAG)', '🧠 Ürün Eğitimi', 'manage_options', 'ql-ai-training', [$this, 'page_product_training']);
         add_submenu_page('ql-ai-settings', 'Maliyet Raporu', '💸 Maliyet Raporu', 'manage_options', 'ql-ai-costs', [$this, 'page_costs']);
     }
 
@@ -1502,8 +1506,12 @@ class QualityLife_Admin_Pages {
         // 7. En Çok Soru Sorulan Ürünler
         $top_products = $wpdb->get_results("SELECT product_name, model_code, COUNT(id) as q_count FROM $table_qs WHERE product_name IS NOT NULL AND status != 'SYNCED' AND question_text != 'OTOMATIK SENKRONIZASYON' GROUP BY model_code ORDER BY q_count DESC LIMIT 5");
 
-        // Chart.js Kütüphanesi
+       // Uzman Dokunuşu: defer ile asenkron yükleyerek admin sayfa açılış hızını koru.
         wp_enqueue_script('chart-js', 'https://cdn.jsdelivr.net/npm/chart.js', [], null, true);
+        add_filter('script_loader_tag', function($tag, $handle) {
+            if ('chart-js' === $handle) return str_replace(' src', ' defer src', $tag);
+            return $tag;
+        }, 10, 2);
         ?>
         <style>
             .ql-dash-wrap { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 1200px; margin: 20px auto; color: #1e293b; padding: 0 15px; box-sizing: border-box; }

@@ -82,7 +82,11 @@ class QualityLife_AI_Core {
             created_date datetime,
             vector_data longtext, -- YENİ: Vektör Koordinatları (JSON) burada tutulacak
             PRIMARY KEY  (id),
-            UNIQUE KEY trendyol_id (trendyol_id)
+            UNIQUE KEY trendyol_id (trendyol_id),
+            INDEX status_idx (status),
+            INDEX store_idx (store_id),
+            INDEX golden_idx (is_golden),
+            INDEX model_idx (model_code)
         ) $charset_collate;";
         
         require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
