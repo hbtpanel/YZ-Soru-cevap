@@ -88,6 +88,28 @@ class QualityLife_AI_Core {
             INDEX golden_idx (is_golden),
             INDEX model_idx (model_code)
         ) $charset_collate;";
+
+        // --- YENİ: ÜRÜN EĞİTİMİ İŞLEM GEÇMİŞİ (LOG) TABLOSU ---
+    $table_history = $wpdb->prefix . 'ql_product_history';
+    
+    $sql_history = "CREATE TABLE $table_history (
+        id bigint(20) NOT NULL AUTO_INCREMENT,
+        barcode varchar(100) NOT NULL,
+        store_name varchar(100) DEFAULT '' NOT NULL,
+        product_name varchar(255) DEFAULT '' NOT NULL,
+        image_url varchar(255) DEFAULT '' NOT NULL,
+        old_content longtext NOT NULL,
+        new_content longtext NOT NULL,
+        change_source varchar(50) DEFAULT '' NOT NULL,
+        changed_by bigint(20) DEFAULT 0 NOT NULL,
+        created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        PRIMARY KEY  (id),
+        KEY barcode (barcode)
+    ) $charset_collate;";
+
+    // dbDelta fonksiyonu ile tabloyu güvenli bir şekilde oluştur veya güncelle
+    require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
+    dbDelta( $sql_history );
         
         require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
         dbDelta( $sql1 );
@@ -104,6 +126,7 @@ class QualityLife_AI_Core {
         ) $charset_collate;";
         dbDelta($sql_logs);
     }
+    
 }
 
 // Sistemi Ateşle

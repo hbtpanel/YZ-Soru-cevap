@@ -20,6 +20,9 @@ class QualityLife_Cron_Jobs {
         // Örn: siteniz.com/?ql_trigger=secret_key_123
         if ( isset($_GET['ql_trigger']) && $_GET['ql_trigger'] === 'ql_auto_pilot_789' ) {
             
+            // UZMAN DOKUNUŞU: Yüzlerce soru işlenirken PHP'nin 30 saniye kuralına takılıp çökmesini (Fatal Error) engelliyoruz
+            set_time_limit(0);
+            
             // 1. Veri Çekme Botunu Çalıştır
             $this->run_daily_fetch();
             
@@ -115,28 +118,36 @@ class QualityLife_Cron_Jobs {
         }
     }
 
-    // --- İŞÇİ 2: SÜREKLİ İNDEKSLEME BOTU (Google'a Yazma) ---
+   // --- İŞÇİ 2: SÜREKLİ İNDEKSLEME BOTU (Google'a Yazma) ---
     public function run_vector_indexer() {
         global $wpdb;
         $table = $wpdb->prefix . 'ql_all_questions';
 
-        // Limit 10: Her 5 dakikada en fazla 10 soruyu indeksle. (Günde ~2800 soru yapar, limitlere takılmaz)
-        $unprocessed = $wpdb->get_results("SELECT id, question_text, answer_text FROM $table WHERE vector_data IS NULL LIMIT 10");
+        // UZMAN DOKUNUŞU: Batch (Toplu) sisteme geçtik. Artık 10 değil tek seferde 100 soru işleyip faturayı ve zamanı 10'a bölüyoruz.
+        $unprocessed = $wpdb->get_results("SELECT id, question_text, answer_text FROM $table WHERE vector_data IS NULL LIMIT 100");
 
         if (empty($unprocessed)) return; // İndekslenecek soru yoksa geri uyu
 
+        $texts_to_embed = [];
+        $ids = [];
+        
         foreach ($unprocessed as $row) {
-            $combined_text = "Soru: " . $row->question_text . " Cevap: " . $row->answer_text;
-            
-            // Diğer dosyada yazdığımız Google API fonksiyonunu çağırıyoruz
-            $result = QualityLife_API_Services::get_text_embedding($combined_text);
-            
-            if (isset($result['values'])) {
-                $wpdb->update(
-                    $table,
-                    ['vector_data' => wp_json_encode($result['values'])],
-                    ['id' => $row->id]
-                );
+            $texts_to_embed[] = "Soru: " . $row->question_text . " Cevap: " . $row->answer_text;
+            $ids[] = $row->id;
+        }
+
+        // Toplu (Batch) API İsteği
+        $result = QualityLife_API_Services::get_batch_text_embeddings($texts_to_embed);
+
+        if (isset($result['embeddings'])) {
+            foreach ($result['embeddings'] as $index => $embedding_data) {
+                if (isset($embedding_data['values'])) {
+                    $wpdb->update(
+                        $table,
+                        ['vector_data' => wp_json_encode($embedding_data['values'])],
+                        ['id' => $ids[$index]]
+                    );
+                }
             }
         }
     }

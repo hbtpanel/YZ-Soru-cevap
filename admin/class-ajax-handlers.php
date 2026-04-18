@@ -18,6 +18,7 @@ class QualityLife_AJAX_Handlers {
         add_action( 'wp_ajax_ql_load_pending_cards', [ $this, 'ajax_load_pending_cards' ] );
         // Uzman Dokunuşu: AJAX güvenliği için admin_init kancasını kullanıyoruz (Fonksiyonlar yüklendikten sonra çalışır)
         add_action( 'admin_init', [ $this, 'secure_ajax_endpoints' ] );
+        add_action( 'wp_ajax_ql_restore_history', [ $this, 'ajax_restore_history' ] );
         
     }
 
@@ -337,21 +338,68 @@ class QualityLife_AJAX_Handlers {
     
     }
 
-    // --- YENİ: RAG KURALINI KAYDET ---
+ // --- YENİ: RAG KURALINI KAYDET VE LOGLA (SNAPSHOT MİMARİSİ) ---
     public function ajax_save_product_rule() {
         check_ajax_referer('ql_ajax_nonce', 'security');
         global $wpdb;
         $barcode = sanitize_text_field($_POST['barcode']);
         $info = sanitize_textarea_field($_POST['info']);
+        $is_append = isset($_POST['is_append']) && $_POST['is_append'] === 'true'; 
         
-        $table = $wpdb->prefix . 'ql_product_knowledge';
+        $table_rag = $wpdb->prefix . 'ql_product_knowledge';
+        $table_questions = $wpdb->prefix . 'ql_all_questions';
+        $table_history = $wpdb->prefix . 'ql_product_history';
         
-        $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM $table WHERE barcode = %s", $barcode));
+        // 1. ADIM: Snapshot İçin Ürün Kimliğini Bul (İsim, Resim, Mağaza ID)
+        $product_details = $wpdb->get_row($wpdb->prepare("SELECT store_id, product_name, image_url FROM $table_questions WHERE model_code = %s OR barcode = %s LIMIT 1", $barcode, $barcode));
         
-        if($exists) {
-            $wpdb->update($table, ['product_info' => $info], ['barcode' => $barcode]);
+        $p_name = $product_details ? $product_details->product_name : 'Bilinmeyen Ürün';
+        $i_url = $product_details ? $product_details->image_url : '';
+        $s_id = $product_details ? $product_details->store_id : '';
+        
+        // Mağaza Adını Çözümle
+        $stores = get_option('ql_trendyol_stores', []);
+        $s_name = isset($stores[$s_id]) ? $stores[$s_id]['name'] : 'Genel Kural';
+        
+        // İşlemin Nereden Yapıldığını Tespit Et
+        $change_source = $is_append ? 'Auto-RAG (Pop-up)' : 'Admin Panel / Manuel Not';
+        
+        // 2. ADIM: Eski Veriyi Al
+        $old_content = $wpdb->get_var($wpdb->prepare("SELECT product_info FROM $table_rag WHERE barcode = %s", $barcode));
+        if ($old_content === null) $old_content = '';
+
+        $final_info = '';
+
+        // 3. ADIM: Kaydetme ve Loglama Motoru
+        if (trim($info) === '') {
+            $final_info = ''; 
+            if ($old_content !== '') {
+                $wpdb->delete($table_rag, ['barcode' => $barcode]); // Veriyi sil
+                
+                // Silinme İşlemini Logla
+                $wpdb->insert($table_history, [
+                    'barcode' => $barcode, 'store_name' => $s_name, 'product_name' => $p_name, 'image_url' => $i_url,
+                    'old_content' => $old_content, 'new_content' => '[KURAL SİLİNDİ]', 'change_source' => $change_source, 'changed_by' => get_current_user_id()
+                ]);
+            }
         } else {
-            $wpdb->insert($table, ['barcode' => $barcode, 'product_info' => $info]);
+            if ($old_content !== '') {
+                // Eskinin üzerine veya sonuna ekle
+                $final_info = $is_append ? $old_content . "\n\nKalıcı Kural: " . $info : $info;
+                $wpdb->update($table_rag, ['product_info' => $final_info], ['barcode' => $barcode]);
+            } else {
+                // Sıfırdan ekle
+                $final_info = $info;
+                $wpdb->insert($table_rag, ['barcode' => $barcode, 'product_info' => $final_info]);
+            }
+            
+            // SADECE metinde bir değişim olduysa Log tablosuna yaz (Gereksiz çöp veri birikmesini önler)
+            if ($old_content !== $final_info) {
+                $wpdb->insert($table_history, [
+                    'barcode' => $barcode, 'store_name' => $s_name, 'product_name' => $p_name, 'image_url' => $i_url,
+                    'old_content' => $old_content, 'new_content' => $final_info, 'change_source' => $change_source, 'changed_by' => get_current_user_id()
+                ]);
+            }
         }
         
         wp_send_json_success('Başarı');
@@ -707,5 +755,55 @@ class QualityLife_AJAX_Handlers {
         $id_list = array_column($all_questions, 'id');
 
         wp_send_json_success(['html' => $html, 'count' => count($all_questions), 'ids' => $id_list]);
+    }
+    // --- YENİ: TARİHÇEDEN GERİ YÜKLEME VE SNAPSHOT ---
+    public function ajax_restore_history() {
+        check_ajax_referer('ql_ajax_nonce', 'security');
+        global $wpdb;
+
+        $barcode = sanitize_text_field($_POST['barcode']);
+        // Uzman Dokunuşu: Verinin ham halini korumak ama zararlı kodlardan arındırmak için
+        $content = wp_kses_post(wp_unslash($_POST['content'])); 
+        
+        if ($content === '[KURAL SİLİNDİ]') {
+            $content = '';
+        }
+
+        $table_rag = $wpdb->prefix . 'ql_product_knowledge';
+        $table_questions = $wpdb->prefix . 'ql_all_questions';
+        $table_history = $wpdb->prefix . 'ql_product_history';
+
+        // 1. Snapshot Verilerini Al
+        $product_details = $wpdb->get_row($wpdb->prepare("SELECT store_id, product_name, image_url FROM $table_questions WHERE model_code = %s OR barcode = %s LIMIT 1", $barcode, $barcode));
+        
+        $p_name = $product_details ? $product_details->product_name : 'Bilinmeyen Ürün';
+        $i_url = $product_details ? $product_details->image_url : '';
+        $s_id = $product_details ? $product_details->store_id : '';
+        $stores = get_option('ql_trendyol_stores', []);
+        $s_name = isset($stores[$s_id]) ? $stores[$s_id]['name'] : 'Genel Kural';
+
+        // 2. Mevcut Metni Al (Loglama İçin)
+        $old_live_content = $wpdb->get_var($wpdb->prepare("SELECT product_info FROM $table_rag WHERE barcode = %s", $barcode));
+        if ($old_live_content === null) $old_live_content = '';
+
+        // 3. Geri Yükleme (Update/Delete/Insert)
+        if (trim($content) === '') {
+            $wpdb->delete($table_rag, ['barcode' => $barcode]);
+        } else {
+            $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM $table_rag WHERE barcode = %s", $barcode));
+            if ($exists) {
+                $wpdb->update($table_rag, ['product_info' => $content], ['barcode' => $barcode]);
+            } else {
+                $wpdb->insert($table_rag, ['barcode' => $barcode, 'product_info' => $content]);
+            }
+        }
+
+        // 4. Yeni Bir Log Kaydı At (Zinciri Bozma)
+        $wpdb->insert($table_history, [
+            'barcode' => $barcode, 'store_name' => $s_name, 'product_name' => $p_name, 'image_url' => $i_url,
+            'old_content' => $old_live_content, 'new_content' => $content, 'change_source' => '🕒 Geri Yükleme (Restore)', 'changed_by' => get_current_user_id()
+        ]);
+
+        wp_send_json_success();
     }
 }

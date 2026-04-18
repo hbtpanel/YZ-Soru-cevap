@@ -22,8 +22,9 @@ class QualityLife_Admin_Pages {
         add_submenu_page('ql-ai-settings', 'Ayarlar', '⚙️ Ayarlar', 'manage_options', 'ql-ai-settings', [ $this, 'page_settings' ]); 
         add_submenu_page('ql-ai-settings', 'Genel Bakış', '📊 Genel Bakış', 'manage_options', 'ql-ai-dashboard', [ $this, 'page_dashboard' ]);
         add_submenu_page('ql-ai-settings', 'Bekleyen Sorular', '💬 Bekleyen Sorular', 'manage_options', 'ql-ai-questions', [ $this, 'page_questions' ]);
-        add_submenu_page('ql-ai-settings', 'Soru Arşivi', '🗄️ Soru Arşivi', 'manage_options', 'ql-ai-past-questions', [ $this, 'page_past_questions' ]);
+       add_submenu_page('ql-ai-settings', 'Soru Arşivi', '🗄️ Soru Arşivi', 'manage_options', 'ql-ai-past-questions', [ $this, 'page_past_questions' ]);
         add_submenu_page('ql-ai-settings', 'Ürün Eğitimi (RAG)', '🧠 Ürün Eğitimi', 'manage_options', 'ql-ai-training', [$this, 'page_product_training']);
+        add_submenu_page('ql-ai-settings', 'İşlem Geçmişi', '🕒 İşlem Geçmişi', 'manage_options', 'ql-ai-history', [$this, 'page_product_history']);
         add_submenu_page('ql-ai-settings', 'Maliyet Raporu', '💸 Maliyet Raporu', 'manage_options', 'ql-ai-costs', [$this, 'page_costs']);
     }
 
@@ -454,12 +455,16 @@ class QualityLife_Admin_Pages {
                 fd.append('security', nonce);
                 fd.append('store_id', urlParams.get('store_id') || 'all');
                 
-                // UZMAN DOKUNUŞU: Yazıları Koruma Kalkanı (Sayfa arkada yenilense bile notların silinmez)
+               // UZMAN DOKUNUŞU: Yazıları ve YZ Hafızasını Koruma Kalkanı
                 const userInputs = {};
+                const originalYZ = {}; // YZ'nin arka planda silinmesini engellediğimiz zırh
                 if (grid) {
                     grid.querySelectorAll('textarea, input[type="text"]').forEach(el => {
                         if (el.id && el.value.trim() !== '') {
                             userInputs[el.id] = el.value;
+                        }
+                        if (el.id && el.dataset.original) {
+                            originalYZ[el.id] = el.dataset.original;
                         }
                     });
                 }
@@ -485,16 +490,20 @@ class QualityLife_Admin_Pages {
                         const btnCheck = document.getElementById('btn-check-new');
                         if(btnCheck) btnCheck.dataset.current = visibleCards;
 
-                        // Trendyol yalan söylüyorsa ve aslında ekranda hiç kart kalmadıysa boş ekranı (Tebrikler) getir
-                        if (visibleCards === 0 && gonderilenSoruIDleri.length > 0) {
+                        // UZMAN DOKUNUŞU: Ekranda gerçekten kart yoksa ve halihazırda tebrikler mesajı da yoksa, beyaz boşluğu doldur!
+                        if (visibleCards === 0 && !grid.innerHTML.includes('🎉')) {
                             grid.innerHTML = '<div style="grid-column: 1 / -1; text-align:center; padding: 100px 20px; background:#fff; border-radius:30px; border: 2px dashed #cbd5e1;"><div style="font-size:50px; margin-bottom:20px;">🎉</div><h2 style="margin:0; color:#1e293b;">Tebrikler! Bekleyen soru yok.</h2><p style="color:#64748b;">Yeni sorular geldiğinde burada görünecekler.</p></div>';
                         }
 
-                        // UZMAN DOKUNUŞU: Yedeklenen notları yeni kartların içine anında geri koy
+                        // UZMAN DOKUNUŞU: Yedeklenen notları ve YZ hafızasını yeni kartların içine anında geri koy
                         for (const [id, value] of Object.entries(userInputs)) {
                             const el = document.getElementById(id);
                             if (el) {
                                 el.value = value;
+                                // YZ'nin gizli orijinal metnini geri yükle (RAG sisteminin körleşmesini engeller)
+                                if (originalYZ[id]) {
+                                    el.dataset.original = originalYZ[id];
+                                }
                                 // Eğer not kutusu veya rag kutusu doluysa, kapanmışsa bile açık tut
                                 if (id.startsWith('note_')) {
                                     const container = document.getElementById('note_container_' + id.split('_')[1]);
@@ -565,9 +574,9 @@ class QualityLife_Admin_Pages {
                     const box = document.getElementById('ans_' + id);
                     const answer = box.value.trim();
                     
-                    // Dedektör: YZ'nin metni ile personelin gönderdiği metin farklı mı?
+                    // UZMAN DOKUNUŞU: Dedektör artık hem düzeltilen hem de tamamen personel tarafından SIFIRDAN yazılan cevapları yakalar
                     const originalAnswer = box.dataset.original || '';
-                    const isModified = (originalAnswer !== '' && answer !== originalAnswer);
+                    const isModified = (originalAnswer !== '' && answer !== originalAnswer) || (originalAnswer === '' && answer !== '');
 
                     if(!answer) return alert('Cevap boş!');
                     btn.disabled = true; btn.innerHTML = '🚀...';
@@ -604,8 +613,8 @@ class QualityLife_Admin_Pages {
                                     <div id="${mId}" style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(15,23,42,0.7); z-index:99999; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(4px);">
                                         <div style="background:#fff; padding:25px; border-radius:16px; width:90%; max-width:450px; box-shadow:0 20px 25px -5px rgba(0,0,0,0.1);">
                                             <h3 style="margin-top:0; font-size:18px; color:#1e293b; display:flex; align-items:center; gap:8px;">🧠 YZ İçin Yeni Kural</h3>
-                                            <p style="font-size:13px; color:#64748b; margin-bottom:15px;">YZ taslağını manuel olarak düzelttiniz. Sistemin bu ürün için yeni bir kural öğrenmesini istiyorsanız aşağıya yazın:</p>
-                                            <textarea id="input_${mId}" rows="3" style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:10px; font-size:13px; margin-bottom:15px; font-family:inherit;">${answer}</textarea>
+                                            <p style="font-size:13px; color:#64748b; margin-bottom:15px;">Müşteriye özel bir cevap gönderdiniz. Sistemin bu ürünle ilgili <strong>sadece net bir kural veya bilgi</strong> öğrenmesini istiyorsanız aşağıya özetleyip yazın (İstemiyorsanız Geç butonuna basın):</p>
+                                            <textarea id="input_${mId}" rows="3" placeholder="Örn: Bu ürün hamilelerin kullanımına uygun değildir..." style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:10px; font-size:13px; margin-bottom:15px; font-family:inherit;"></textarea>
                                             <div style="display:flex; justify-content:flex-end; gap:10px;">
                                                 <button onclick="document.getElementById('${mId}').remove()" style="padding:10px 15px; border:none; background:#f1f5f9; color:#64748b; border-radius:8px; cursor:pointer; font-weight:600;">Geç</button>
                                                 <button id="save_${mId}" style="padding:10px 15px; border:none; background:#10b981; color:#fff; border-radius:8px; cursor:pointer; font-weight:600;">Öğren ve Kaydet</button>
@@ -622,6 +631,8 @@ class QualityLife_Admin_Pages {
                                             fdRag.append('security', nonce);
                                             fdRag.append('barcode', btn.dataset.barcode); 
                                             fdRag.append('info', yeniKural);
+                                            // SİHİRLİ DOKUNUŞ: Sisteme "Bunu var olan eğitimin üzerine yazma, sonuna ekle" diyoruz!
+                                            fdRag.append('is_append', 'true'); 
                                             fetch(ajaxurl, { method: 'POST', body: fdRag });
                                         }
                                         document.getElementById(mId).remove();
@@ -1841,6 +1852,353 @@ class QualityLife_Admin_Pages {
                         }
                     });
                 }, 500); // Kütüphanenin yüklenmesi için yarım saniye avans
+            });
+        </script>
+        <?php
+    }
+    // --- YENİ SAYFA: İŞLEM GEÇMİŞİ VE REVİZYON KONTROLÜ ---
+    public function page_product_history() {
+        global $wpdb;
+        $table_history = $wpdb->prefix . 'ql_product_history';
+        
+        // Tablo kurulu mu kontrolü
+        if($wpdb->get_var("SHOW TABLES LIKE '$table_history'") != $table_history) {
+            echo '<div class="wrap"><h2>Tablo Kuruluyor... Lütfen sayfayı yenileyin.</h2></div>';
+            return;
+        }
+
+        // Filtre ve Arama Parametreleri
+        $s_term   = isset($_GET['s_term']) ? sanitize_text_field($_GET['s_term']) : '';
+        $s_source = isset($_GET['s_source']) ? sanitize_text_field($_GET['s_source']) : '';
+        
+        // Sayfalama
+        $limit = 20;
+        $page = isset($_GET['paged']) ? max(1, intval($_GET['paged'])) : 1;
+        $offset = ($page - 1) * $limit;
+
+        // SQL Sorgusu Hazırlığı
+        $where = "WHERE 1=1"; 
+        $params = [];
+
+        if ($s_term) {
+            $where .= " AND (barcode LIKE %s OR product_name LIKE %s)";
+            $params[] = '%' . $s_term . '%';
+            $params[] = '%' . $s_term . '%';
+        }
+        if ($s_source) {
+            $where .= " AND change_source = %s";
+            $params[] = $s_source;
+        }
+
+        $prepared_where = empty($params) ? $where : $wpdb->prepare($where, $params);
+        $total_items = $wpdb->get_var("SELECT COUNT(id) FROM $table_history $prepared_where");
+        $total_pages = ceil($total_items / $limit);
+
+        // Verileri Çek
+        $query = "SELECT * FROM $table_history $prepared_where ORDER BY created_at DESC LIMIT %d OFFSET %d";
+        $logs = $wpdb->get_results($wpdb->prepare($query, $limit, $offset));
+        ?>
+       <style>
+            .ql-hist-wrap { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 1300px; margin: 20px auto; color: #1e293b; padding: 0 10px; box-sizing: border-box; }
+            .ql-hist-header { background: #fff; padding: 20px 25px; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.04); border: 1px solid #e2e8f0; margin-bottom: 25px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 15px; align-items: center; }
+            .ql-hist-input { padding: 10px 15px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; min-width: 250px; outline: none; flex: 1; }
+            .ql-hist-input:focus { border-color: #4f46e5; }
+            .ql-hist-btn { background: #1e293b; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s; white-space: nowrap; text-align: center; }
+            .ql-hist-btn:hover { background: #0f172a; }
+            
+            /* Mobil Uyumlu Tablo Taşıyıcısı */
+            .ql-table-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 12px; background: #fff; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; margin-bottom: 20px; }
+            .ql-hist-table { width: 100%; border-collapse: collapse; min-width: 800px; /* Telefonlarda swipe yapabilmek için */ }
+            .ql-hist-table th, .ql-hist-table td { padding: 15px 20px; text-align: left; border-bottom: 1px solid #f1f5f9; }
+            .ql-hist-table th { background: #f8fafc; color: #64748b; font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+            .ql-hist-table tr:hover td { background: #f8fafc; }
+            .ql-hist-table tr:last-child td { border-bottom: none; }
+            
+            .ql-product-cell { display: flex; align-items: center; gap: 15px; }
+            .ql-product-img { width: 44px; height: 44px; border-radius: 8px; object-fit: contain; border: 1px solid #e2e8f0; background: #fff; flex-shrink: 0; }
+            .ql-badge-store { background: #e0e7ff; color: #4338ca; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 12px; display: inline-block; margin-top: 4px; }
+            
+            .ql-badge-source { font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 12px; display: inline-block; white-space: nowrap; }
+            .source-auto { background: #dcfce7; color: #166534; }
+            .source-manual { background: #fef3c7; color: #92400e; }
+            
+            .ql-tooltip-text { display: inline-block; max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 13px; color: #64748b; margin-top: 2px; cursor: help; }
+
+            /* Modal (Diff Görünümü) */
+            .ql-diff-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,23,42,0.8); z-index: 99999; align-items: center; justify-content: center; backdrop-filter: blur(4px); padding: 10px; box-sizing: border-box; }
+            .ql-diff-content { background: #fff; width: 900px; max-width: 100%; border-radius: 16px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25); display: flex; flex-direction: column; max-height: 95vh; position: relative; }
+            .ql-diff-header { padding: 20px 25px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; }
+            .ql-diff-body { padding: 25px; display: grid; grid-template-columns: 1fr 1fr; gap: 25px; overflow-y: auto; }
+            .ql-diff-box { border: 1px solid #e2e8f0; border-radius: 12px; padding: 15px; font-size: 13px; line-height: 1.6; background: #fafafa; white-space: pre-wrap; word-break: break-word; }
+            .ql-diff-box.old { border-top: 4px solid #ef4444; }
+            .ql-diff-box.new { border-top: 4px solid #10b981; }
+
+            /* ========================================= */
+            /* 📱 SİHİRLİ DOKUNUŞ: MOBİL (TELEFON) UYUMU */
+            /* ========================================= */
+            @media (max-width: 768px) {
+                .ql-hist-header form { flex-direction: column; align-items: stretch; }
+                .ql-hist-input { min-width: 100%; width: 100%; }
+                .ql-hist-header form > div:first-child { flex-direction: column; align-items: stretch; }
+                .ql-hist-btn { width: 100%; padding: 12px; font-size: 15px; } 
+                
+                .ql-diff-body { grid-template-columns: 1fr; gap: 15px; padding: 15px; }
+                .ql-diff-header { padding: 15px; flex-direction: column; text-align: center; gap: 10px; }
+                .ql-diff-header button { position: absolute; top: 15px; right: 15px; background: #f1f5f9; width: 35px; height: 35px; border-radius: 50%; display: flex; align-items: center; justify-content: center; } 
+                
+                .ql-diff-body h3 { flex-direction: column; align-items: flex-start !important; gap: 10px; }
+                .ql-diff-body h3 button { width: 100%; padding: 10px !important; font-size: 13px !important; }
+                
+                .ql-table-wrap { box-shadow: inset -10px 0 10px -10px rgba(0,0,0,0.1); }
+            }
+        </style>
+
+        <div class="ql-hist-wrap">
+            <h1 style="margin-bottom: 20px; font-size: 24px; font-weight: 800; display:flex; align-items:center; gap:10px;">
+                🕒 Ürün Eğitimi İşlem Geçmişi
+            </h1>
+
+            <div class="ql-hist-header">
+                <form method="get" style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap; width: 100%;">
+                    <input type="hidden" name="page" value="ql-ai-history">
+                    
+                    <div style="flex: 1; display: flex; align-items: center; gap: 10px;">
+                        <input type="text" name="s_term" class="ql-hist-input" value="<?php echo esc_attr($s_term); ?>" placeholder="Barkod veya Ürün Adı ile ara..." style="width: 100%;">
+                    </div>
+
+                    <select name="s_source" class="ql-hist-input" style="min-width: 180px;">
+                        <option value="">Tüm Kaynaklar</option>
+                        <option value="Auto-RAG (Pop-up)" <?php selected($s_source, 'Auto-RAG (Pop-up)'); ?>>Auto-RAG (Pop-up)</option>
+                        <option value="Admin Panel / Manuel Not" <?php selected($s_source, 'Admin Panel / Manuel Not'); ?>>Manuel Not / Panel</option>
+                    </select>
+
+                    <button type="submit" class="ql-hist-btn">Arama Yap</button>
+                    <a href="?page=ql-ai-history" style="text-decoration: none; color: #64748b; font-weight: 600; padding: 10px;">Temizle</a>
+                </form>
+            </div>
+
+            <div class="ql-table-wrap">
+                <table class="ql-hist-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 250px;">Görsel & Mağaza</th>
+                            <th>Barkod & Ürün Adı</th>
+                            <th>Kayıt Kaynağı</th>
+                            <th>Tarih</th>
+                            <th style="text-align:right;">İşlem</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if(empty($logs)): ?>
+                            <tr><td colspan="5" style="text-align:center; padding:40px; color:#64748b;">Kayıt bulunamadı.</td></tr>
+                        <?php else: foreach($logs as $log): 
+                            // Resim yoksa yer tutucu
+                            $img = !empty($log->image_url) ? esc_url($log->image_url) : 'https://placehold.co/100x100/f8fafc/64748b?text=Gorsel';
+                            // Metin kesme (50 Karakter)
+                            $short_name = mb_strlen($log->product_name) > 50 ? mb_substr($log->product_name, 0, 50) . '...' : $log->product_name;
+                            // Kaynak Rengi
+                            $source_class = strpos($log->change_source, 'Auto-RAG') !== false ? 'source-auto' : 'source-manual';
+                        ?>
+                        <tr>
+                            <td>
+                                <div class="ql-product-cell">
+                                    <img src="<?php echo $img; ?>" class="ql-product-img">
+                                    <div>
+                                        <span class="ql-badge-store"><?php echo esc_html($log->store_name); ?></span>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <strong style="font-size: 15px; color: #0f172a; display: block;"><?php echo esc_html($log->barcode); ?></strong>
+                                <span class="ql-tooltip-text" title="<?php echo esc_attr($log->product_name); ?>"><?php echo esc_html($short_name); ?></span>
+                            </td>
+                            <td><span class="ql-badge-source <?php echo $source_class; ?>"><?php echo esc_html($log->change_source); ?></span></td>
+                            <td style="color: #64748b; font-size: 13px;"><?php echo date('d.m.Y H:i', strtotime($log->created_at)); ?></td>
+                            <td style="text-align:right;">
+                                <button class="ql-hist-btn btn-inspect" style="background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; padding: 6px 12px; font-size: 12px;" 
+                                    data-id="<?php echo $log->id; ?>"
+                                    data-barcode="<?php echo esc_attr($log->barcode); ?>"
+                                    data-old="<?php echo esc_attr($log->old_content); ?>"
+                                    data-new="<?php echo esc_attr($log->new_content); ?>">
+                                    🔍 İncele
+                                </button>
+                            </td>
+                        </tr>
+                        <?php endforeach; endif; ?>
+                    </tbody>
+                </table>
+            </div>
+
+            <?php if($total_pages > 1): ?>
+            <div style="margin-top: 20px; text-align: right;">
+                <?php
+                echo paginate_links([
+                    'base' => add_query_arg('paged', '%#%'), 'format' => '', 'prev_text' => '« Önceki', 'next_text' => 'Sonraki »', 'total' => $total_pages, 'current' => $page
+                ]);
+                ?>
+            </div>
+            <?php endif; ?>
+        </div>
+
+       <div class="ql-diff-modal" id="diffModal">
+            <div class="ql-diff-content">
+                <div class="ql-diff-header">
+                    <div>
+                        <h2 style="margin:0; font-size:18px;">🔍 Değişiklik Detayı</h2>
+                        <div id="diff-barcode" style="font-size:12px; color:#64748b; margin-top:5px; font-weight:600;"></div>
+                    </div>
+                    <button onclick="document.getElementById('diffModal').style.display='none'" style="background:none; border:none; font-size:20px; cursor:pointer;">✖</button>
+                </div>
+                <div class="ql-diff-body">
+                    <div>
+                        <h3 style="margin-top:0; color:#ef4444; font-size:14px; display:flex; justify-content:space-between; align-items:center;">
+                            Eski Versiyon
+                            <button class="ql-hist-btn btn-restore-action" data-type="old" style="background:#ef4444; padding:4px 8px; font-size:11px;">⏪ Bu Sürüme Dön</button>
+                        </h3>
+                        <div class="ql-diff-box old" id="diff-old"></div>
+                    </div>
+                    <div>
+                        <h3 style="margin-top:0; color:#10b981; font-size:14px; display:flex; justify-content:space-between; align-items:center;">
+                            Yeni (Kaydedilen) Versiyon
+                            <button class="ql-hist-btn btn-restore-action" data-type="new" style="background:#10b981; padding:4px 8px; font-size:11px;">🔄 Bu Sürümü Onayla</button>
+                        </h3>
+                        <div class="ql-diff-box new" id="diff-new"></div>
+                    </div>
+                </div>
+                <div style="padding: 15px 25px; border-top: 1px solid #e2e8f0; background: #f8fafc; text-align:center;">
+                    <span style="font-size:12px; color:#64748b;">Hangi sürümü geri yüklemek istiyorsanız üzerindeki butona basınız.</span>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                const modal = document.getElementById('diffModal');
+                let currentBarcode = '';
+                let contentOld = '';
+                let contentNew = '';
+
+                // --- UZMAN DOKUNUŞU: GITHUB TARZI VISUAL DIFF (LCS Algoritması) ---
+                // Dışarıdan kütüphane yüklemeden, kelime kelime farklılıkları (kırmızı/yeşil) çıkaran motor.
+                function generateDiffHTML(oldStr, newStr) {
+                    if (!oldStr) oldStr = '';
+                    if (!newStr) newStr = '';
+
+                    // Metni kelimelere, boşluklara ve noktalama işaretlerine ayırır (Türkçe karakter destekli)
+                    const tokenize = text => text.match(/(\s+|[\wçğıöşüÇĞİIÖŞÜ]+|[^\wçğıöşüÇĞİIÖŞÜ\s]+)/g) || [];
+                    const oldT = tokenize(oldStr);
+                    const newT = tokenize(newStr);
+
+                    // LCS Matrisi oluştur (Kelimeler arası benzerlik haritası)
+                    const dp = Array(oldT.length + 1).fill(null).map(() => Array(newT.length + 1).fill(0));
+                    for (let i = 1; i <= oldT.length; i++) {
+                        for (let j = 1; j <= newT.length; j++) {
+                            if (oldT[i-1] === newT[j-1]) dp[i][j] = dp[i-1][j-1] + 1;
+                            else dp[i][j] = Math.max(dp[i-1][j], dp[i][j-1]);
+                        }
+                    }
+
+                    // Geriye doğru iz sür (Silinenleri ve Eklenenleri yakala)
+                    let i = oldT.length, j = newT.length;
+                    const actions = [];
+                    while (i > 0 || j > 0) {
+                        if (i > 0 && j > 0 && oldT[i-1] === newT[j-1]) {
+                            actions.push({ type: 'eq', val: oldT[i-1] });
+                            i--; j--;
+                        } else if (j > 0 && (i === 0 || dp[i][j-1] >= dp[i-1][j])) {
+                            actions.push({ type: 'ins', val: newT[j-1] });
+                            j--;
+                        } else if (i > 0 && (j === 0 || dp[i][j-1] < dp[i-1][j])) {
+                            actions.push({ type: 'del', val: oldT[i-1] });
+                            i--;
+                        }
+                    }
+                    actions.reverse();
+
+                    let oldHTML = '', newHTML = '';
+                    actions.forEach(a => {
+                        // HTML bozmasın diye güvenlik kalkanı
+                        const safeVal = a.val.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        
+                        if (a.type === 'eq') {
+                            // Değişmeyen kelimeler (Normal görünür)
+                            oldHTML += safeVal;
+                            newHTML += safeVal;
+                        } else if (a.type === 'ins') {
+                            // Yeni Eklenen Kelimeler (Sadece sağ tarafta Yeşil görünür)
+                            newHTML += `<span style="background-color: #bbf7d0; color: #166534; border-radius:3px; padding:0 2px;">${safeVal}</span>`;
+                        } else if (a.type === 'del') {
+                            // Silinen Kelimeler (Sadece sol tarafta Kırmızı ve üzeri çizili görünür)
+                            oldHTML += `<span style="background-color: #fecaca; color: #991b1b; text-decoration: line-through; border-radius:3px; padding:0 2px;">${safeVal}</span>`;
+                        }
+                    });
+
+                    return { old: oldHTML, new: newHTML };
+                }
+
+                // İncele Butonuna Tıklanınca
+                document.querySelectorAll('.btn-inspect').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        currentBarcode = this.dataset.barcode;
+                        contentOld = this.dataset.old;
+                        contentNew = this.dataset.new;
+
+                        document.getElementById('diff-barcode').innerText = 'Barkod: ' + currentBarcode;
+
+                        // Visual Diff Motorunu Çalıştır ve HTML'e bas
+                        if (contentOld.trim() === '' && contentNew.trim() === '') {
+                            document.getElementById('diff-old').innerHTML = 'BOŞ';
+                            document.getElementById('diff-new').innerHTML = 'BOŞ';
+                        } else {
+                            const diffs = generateDiffHTML(contentOld, contentNew);
+                            document.getElementById('diff-old').innerHTML = contentOld.trim() === '' ? '<span style="color:#64748b; font-style:italic;">[ÖNCESİNDE KURAL YOKTU VEYA BOŞTU]</span>' : diffs.old;
+                            document.getElementById('diff-new').innerHTML = contentNew.trim() === '' ? '<span style="color:#ef4444; font-weight:bold;">[TÜM KURAL SİLİNDİ]</span>' : diffs.new;
+                        }
+
+                        modal.style.display = 'flex';
+                    });
+                });
+
+                // Geri Yükleme Butonları (Event Delegation)
+                document.querySelectorAll('.btn-restore-action').forEach(btn => {
+                    btn.addEventListener('click', async function() {
+                        const type = this.dataset.type;
+                        const targetContent = (type === 'old') ? contentOld : contentNew;
+
+                        if(targetContent.trim() === '[KURAL SİLİNDİ]' || (type === 'old' && targetContent.trim() === '')) {
+                             if(!confirm('Bu işlem ürünün eğitimini tamamen silecektir (boşaltacaktır). Emin misiniz?')) return;
+                        } else {
+                             if(!confirm('Ürün eğitimi seçtiğiniz bu sürüme geri yüklenecektir. Emin misiniz?')) return;
+                        }
+                        
+                        const originalBtnText = this.innerText;
+                        this.innerText = '⌛...';
+                        this.disabled = true;
+
+                        const fd = new FormData();
+                        fd.append('action', 'ql_restore_history');
+                        fd.append('security', '<?php echo wp_create_nonce("ql_ajax_nonce"); ?>');
+                        fd.append('barcode', currentBarcode);
+                        fd.append('content', targetContent);
+
+                        try {
+                            const res = await fetch(ajaxurl, { method: 'POST', body: fd });
+                            const data = await res.json();
+                            
+                            if(data.success) {
+                                alert('✅ İşlem Başarılı! Ürün eğitimi güncellendi ve yeni bir log oluşturuldu.');
+                                location.reload();
+                            } else {
+                                alert('Hata: Sunucu geri yükleme işlemini reddetti.');
+                            }
+                        } catch(e) {
+                            alert('Bağlantı hatası oluştu.');
+                        }
+                        
+                        this.innerText = originalBtnText;
+                        this.disabled = false;
+                    });
+                });
             });
         </script>
         <?php
