@@ -475,7 +475,6 @@ class QualityLife_Admin_Pages {
             <div class="ql-header-section">
                 <div class="ql-title-group">
                     <h1>📥 Bekleyen Sorular</h1>
-                    <audio id="ql-bildirim-sesi" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto"></audio>
                     <p>Müşterilerinizden gelen yanıt bekleyen mesajları buradan yönetin.</p>
                 </div>
             </div>
@@ -515,21 +514,51 @@ class QualityLife_Admin_Pages {
 
        
         <script>
-        document.addEventListener('DOMContentLoaded', function() {
+      document.addEventListener('DOMContentLoaded', function() {
             const nonce = '<?php echo wp_create_nonce("ql_ajax_nonce"); ?>';
             const grid = document.getElementById('ql-dynamic-questions-grid');
             let mevcutSoruIDleri = []; // Akıllı Radar için
             let gonderilenSoruIDleri = []; // UZMAN DOKUNUŞU: Trendyol API gecikmesini önlemek için yerel kara liste
 
-            // --- SES KİLİDİ AÇICI (Zorunlu Tarayıcı Politikası) ---
-            let audioUnlocked = false;
+            // UZMAN DOKUNUŞU: iOS Kilit Ekranı Müzik Çalar Temizleyicisi (Bekleyen Sorular Sayfası)
+            document.addEventListener("visibilitychange", function() {
+                if (document.hidden && 'mediaSession' in navigator) {
+                    navigator.mediaSession.metadata = null;
+                    navigator.mediaSession.playbackState = 'none';
+                }
+            });
+
+          // --- UZMAN DOKUNUŞU: WEB AUDIO API (Kilit Ekranı Müzik Çalar Engelleyici) ---
+            let audioCtx = null;
+            let notificationBuffer = null;
+
+            // Sesi arka planda indirip hafızaya alalım (Media Player tetiklemez)
+            fetch('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3')
+                .then(res => res.arrayBuffer())
+                .then(data => { notificationBuffer = data; });
+
+            // İlk tıklamada iOS için ses motorunu uyandır
             document.body.addEventListener('click', function() {
-                if(!audioUnlocked) {
-                    let ses = document.getElementById('ql-bildirim-sesi');
-                    if (ses) { ses.play().then(() => { ses.pause(); ses.currentTime = 0; }).catch(()=>{}); }
-                    audioUnlocked = true;
+                if (!audioCtx) {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    // iOS güvenlik kilidini aşmak için saniyelik sessiz frekans çal
+                    const osc = audioCtx.createOscillator();
+                    osc.connect(audioCtx.destination);
+                    osc.start(0); osc.stop(0.01);
                 }
             }, { once: true });
+
+            function playSmartNotification() {
+                if (audioCtx && notificationBuffer) {
+                    // Sesi <audio> etiketi olmadan, direkt RAM üzerinden görünmez çalarız
+                    audioCtx.decodeAudioData(notificationBuffer.slice(0), function(buffer) {
+                        const source = audioCtx.createBufferSource();
+                        source.buffer = buffer;
+                        source.connect(audioCtx.destination);
+                        source.start(0);
+                    });
+                }
+            }
 
             // Trafik Lambası Skoru
             function updateScoreUI(id, score) {
@@ -872,15 +901,7 @@ class QualityLife_Admin_Pages {
                 });
             }
             
-           // --- SESSİZ RADAR VE SES SİSTEMİ BAŞLANGICI (ESKİ KOD MANTIĞI) ---
-            if(!document.getElementById('ql-bildirim-sesi')) {
-                let audioEl = document.createElement('audio');
-                audioEl.id = 'ql-bildirim-sesi';
-                audioEl.src = 'https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3';
-                audioEl.preload = 'auto';
-                document.body.appendChild(audioEl);
-            }
-
+          // --- SESSİZ RADAR VE SES SİSTEMİ BAŞLANGICI ---
             setInterval(async function() {
                 try {
                     let fd = new FormData();
@@ -897,21 +918,14 @@ class QualityLife_Admin_Pages {
                         
                         response.data.questions.forEach(soru => {
                             let sId = soru.id ? soru.id.toString() : '';
-                            // Eğer bu soru daha önce bizim manuel gönderdiğimiz bir soruysa yoksay (Trendyol gecikmesi)
                             if (sId && !mevcutSoruIDleri.includes(sId) && !gonderilenSoruIDleri.includes(sId)) { 
                                 yeniGelenVarMi = true; 
                             }
                         });
 
                         if (yeniGelenVarMi) {
-                            let ses = document.getElementById('ql-bildirim-sesi');
-                            if(ses) {
-                                let playPromise = ses.play();
-                                if (playPromise !== undefined) {
-                                    playPromise.catch(error => { console.log("Otomatik ses engellendi."); });
-                                }
-                            }
-                            // Eski kodda burada reload() yapılıyordu, biz modern AJAX fonksiyonumuzu çağırıyoruz
+                            // UZMAN DOKUNUŞU: Yeni RAM bazlı ses motorumuzu çağırıyoruz
+                            playSmartNotification();
                             loadPendingQuestions();
                         }
                     }
