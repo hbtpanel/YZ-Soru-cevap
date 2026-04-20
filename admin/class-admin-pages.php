@@ -1952,6 +1952,56 @@ class QualityLife_Admin_Pages {
                 .ql-table-wrap { box-shadow: inset -10px 0 10px -10px rgba(0,0,0,0.1); }
             }
         </style>
+       <?php
+// AYARLARI KAYDETME MOTORU
+if (isset($_POST['ql_save_onesignal']) && current_user_can('manage_options')) {
+    update_option('ql_onesignal_app_id', sanitize_text_field($_POST['os_app_id']));
+    update_option('ql_onesignal_rest_key', sanitize_text_field($_POST['os_rest_key']));
+    echo '<div style="background:#dcfce7; color:#166534; padding:10px 15px; border-radius:8px; margin-bottom:15px; font-weight:bold;">✅ Bildirim Ayarları Başarıyla Kaydedildi!</div>';
+}
+// AYARLARI VERİTABANINDAN ÇEK
+$saved_app_id = get_option('ql_onesignal_app_id', '');
+$saved_rest_key = get_option('ql_onesignal_rest_key', '');
+?>
+
+<div style="background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.04); border: 1px solid #e2e8f0; margin-bottom: 25px;">
+    <h3 style="margin-top: 0; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">🔔 Web Push (OneSignal) Ayarları</h3>
+    <form method="post" action="">
+        <input type="hidden" name="ql_save_onesignal" value="1">
+        <table class="form-table" style="margin-bottom: 15px;">
+            <tr>
+                <th scope="row" style="width: 200px;"><label for="os_app_id">OneSignal App ID:</label></th>
+                <td><input name="os_app_id" type="text" id="os_app_id" value="<?php echo esc_attr($saved_app_id); ?>" style="width: 100%; max-width: 400px; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1;"></td>
+            </tr>
+            <tr>
+                <th scope="row" style="width: 200px;"><label for="os_rest_key">REST API Key:</label></th>
+                <td><input name="os_rest_key" type="password" id="os_rest_key" value="<?php echo esc_attr($saved_rest_key); ?>" style="width: 100%; max-width: 400px; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1;"></td>
+            </tr>
+        </table>
+        <button type="submit" style="background: #1e293b; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer;">Ayarları Kaydet</button>
+    </form>
+</div>
+
+<?php if(!empty($saved_app_id)): ?>
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+<script>
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  OneSignalDeferred.push(function(OneSignal) {
+    OneSignal.init({
+      appId: "<?php echo esc_js($saved_app_id); ?>",
+      notifyButton: { enable: true },
+    });
+  });
+</script>
+
+<div style="background: #4f46e5; color: #fff; padding: 15px; border-radius: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+    <div style="display: flex; align-items: center; gap: 10px;">
+        <span style="font-size: 20px;">🔔</span>
+        <span style="font-size: 14px; font-weight: 600;">Bu cihaza bildirim gelmesini istiyorsanız aktif edin.</span>
+    </div>
+    <button onclick="OneSignal.User.PushSubscription.optIn()" style="background: #fff; color: #4f46e5; border: none; padding: 8px 16px; border-radius: 8px; font-weight: 700; cursor: pointer;">İzin Ver</button>
+</div>
+<?php endif; ?>
 
         <div class="ql-hist-wrap">
             <h1 style="margin-bottom: 20px; font-size: 24px; font-weight: 800; display:flex; align-items:center; gap:10px;">

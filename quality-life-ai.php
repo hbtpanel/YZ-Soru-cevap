@@ -110,6 +110,16 @@ class QualityLife_AI_Core {
     // dbDelta fonksiyonu ile tabloyu güvenli bir şekilde oluştur veya güncelle
     require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
     dbDelta( $sql_history );
+    // --- UZMAN DOKUNUŞU: OTOMATİK ONESIGNAL DOSYASI KOPYALAYICI ---
+    // Eklenti içindeki JS dosyasını bul
+    $source_file = plugin_dir_path( __FILE__ ) . 'OneSignalSDKWorker.js'; 
+    // WordPress'in ana dizinini (public_html / ABSPATH) hedefle
+    $destination_file = ABSPATH . 'OneSignalSDKWorker.js'; 
+
+    // Eğer kaynak dosya varsa ve ana dizinde henüz yoksa (veya eskiyse), otomatik kopyala!
+    if ( file_exists( $source_file ) ) {
+        @copy( $source_file, $destination_file );
+    }
         
         require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
         dbDelta( $sql1 );
