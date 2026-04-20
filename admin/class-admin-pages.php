@@ -8,8 +8,9 @@ class QualityLife_Admin_Pages {
         add_action( 'admin_post_ql_save_global', [ $this, 'save_global_settings' ] );
         add_action( 'admin_post_ql_save_store', [ $this, 'save_store_settings' ] );
         add_action( 'admin_post_ql_save_knowledge', [ $this, 'save_knowledge' ] );
-        add_action( 'admin_post_ql_update_store_prompt', [ $this, 'update_store_prompt' ] );
+       add_action( 'admin_post_ql_update_store_prompt', [ $this, 'update_store_prompt' ] );
         add_action( 'admin_post_ql_update_knowledge', [ $this, 'update_knowledge' ] );
+        add_action( 'admin_post_ql_save_onesignal', [ $this, 'save_onesignal_settings' ] );
     }
 
     public function setup_admin_menus() {
@@ -115,9 +116,10 @@ class QualityLife_Admin_Pages {
 
             <?php if(isset($_GET['updated'])) echo '<div class="notice notice-success is-dismissible" style="border-radius: 10px; border-left: 4px solid var(--ql-success); padding: 12px 20px; background: #fff; margin-bottom: 25px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);"><p style="margin:0; font-size: 14px;"><strong>Harika!</strong> Ayarlar başarıyla güncellendi ve AES-256 ile şifrelenerek güvene alındı. 🔒</p></div>'; ?>
 
-            <div class="ql-tabs">
+           <div class="ql-tabs">
                 <button class="ql-tab-btn active" onclick="qlOpenTab('tab-api')">🔐 YZ Bağlantısı</button>
                 <button class="ql-tab-btn" onclick="qlOpenTab('tab-stores')">🏪 Mağazalar & Marka Dili</button>
+                <button class="ql-tab-btn" onclick="qlOpenTab('tab-notifications')">🔔 Bildirim Ayarları</button>
             </div>
 
             <div id="tab-api" class="ql-tab-content active">
@@ -206,6 +208,74 @@ class QualityLife_Admin_Pages {
                 </div>
             </div>
 
+            <div id="tab-notifications" class="ql-tab-content">
+                <div class="ql-card">
+                    <h3>🔔 Web Push (OneSignal) Ayarları</h3>
+                    <p style="color: var(--ql-text-light); font-size: 14px; margin-bottom: 20px; line-height: 1.6;">Sistem kapalıyken bile telefonunuza yeni soru bildirimlerinin gelmesi için OneSignal paneli üzerindeki bilgilerinizi buraya girin.</p>
+                  <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                        <input type="hidden" name="action" value="ql_save_onesignal">
+                        <?php wp_nonce_field('ql_onesignal_sec'); ?>
+                        
+                        <?php 
+                        $saved_app_id = get_option('ql_onesignal_app_id', '');
+                        $saved_rest_key = get_option('ql_onesignal_rest_key', '');
+                        ?>
+
+                        <label>OneSignal App ID:</label>
+                        <input type="text" name="os_app_id" class="ql-input" value="<?php echo esc_attr($saved_app_id); ?>" style="max-width: 500px;">
+                        
+                        <label>REST API Key:</label>
+                        <input type="password" name="os_rest_key" class="ql-input" value="<?php echo esc_attr($saved_rest_key); ?>" style="max-width: 500px;">
+                        
+                    <div style="margin-top: 15px; display: flex; gap: 10px;">
+                            <button type="submit" class="ql-btn">💾 Ayarları Kaydet</button>
+                            <button type="button" id="ql-test-os-btn" class="ql-btn" style="background: #0ea5e9;">🚀 Bağlantıyı Test Et</button>
+                        </div>
+                    </form>
+
+                    <?php if(!empty($saved_app_id)): ?>
+                    <div style="margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 25px;">
+                        <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+                        <script>
+                          window.OneSignalDeferred = window.OneSignalDeferred || [];
+                          OneSignalDeferred.push(function(OneSignal) {
+                            OneSignal.init({
+                              appId: "<?php echo esc_js($saved_app_id); ?>",
+                              notifyButton: { enable: true },
+                            });
+                          });
+                        </script>
+                        <div style="background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px 20px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+                            <div style="display: flex; align-items: center; gap: 15px;">
+                                <span style="font-size: 28px;">📱</span>
+                                <div>
+                                    <h4 style="margin: 0; color: #0f172a; font-size: 15px; font-weight: 600;">Bu Cihaz İçin Bildirim İzni</h4>
+                                    <p style="margin: 4px 0 0 0; color: #64748b; font-size: 13px;">Şu an kullandığınız telefona/bilgisayara bildirim gelmesi için aktifleştirin.</p>
+                                </div>
+                            </div>
+                          <button type="button" id="ql-onesignal-optin-btn" style="background: #4f46e5; color: #fff; border: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; cursor: pointer;">Bildirimlere İzin Ver</button>
+                        </div>
+                        <script>
+                          document.getElementById('ql-onesignal-optin-btn').addEventListener('click', function() {
+                              // Tarayıcının mevcut bildirim izni durumunu kontrol et
+                              if (Notification.permission === "granted") {
+                                  alert("✅ Harika! Bu cihazın bildirim izni zaten AÇIK durumda.");
+                              } else if (Notification.permission === "denied") {
+                                  alert("❌ Bildirimler tarayıcı ayarlarınızdan ENGELLENMİŞ. Lütfen adres çubuğundaki (aA veya Kilit) ikonuna tıklayarak bildirimlere izin verin.");
+                              } else {
+                                  // Eğer henüz sorulmadıysa OneSignal penceresini tetikle
+                                  window.OneSignalDeferred.push(function(OneSignal) {
+                                      OneSignal.User.PushSubscription.optIn();
+                                  });
+                              }
+                          });
+                        </script>
+                    </div>
+                    <?php endif; ?>
+
+                </div>
+            </div>
+
             <div class="ql-modal-overlay" id="qlPromptModal">
                 <div class="ql-modal">
                     <button class="ql-modal-close" onclick="closePromptModal()">✖</button>
@@ -288,9 +358,31 @@ class QualityLife_Admin_Pages {
                         alert('Bağlantı hatası oluştu. İnternet veya sunucu ayarlarınızı kontrol edin.'); 
                     }
                     
-                    this.innerHTML = originalText; this.disabled = false;
+                   this.innerHTML = originalText; this.disabled = false;
                 });
             });
+
+            // OneSignal Test Butonu JS Mimarisi
+            const testBtn = document.getElementById('ql-test-os-btn');
+            if(testBtn) {
+                testBtn.addEventListener('click', async function() {
+                    const originalText = this.innerHTML;
+                    this.innerHTML = '⏳ Gönderiliyor...'; this.disabled = true;
+                    
+                    const fd = new FormData();
+                    fd.append('action', 'ql_test_onesignal'); 
+                    fd.append('security', '<?php echo wp_create_nonce("ql_ajax_nonce"); ?>'); 
+                    
+                    try {
+                        const res = await fetch(ajaxurl, { method: 'POST', body: fd });
+                        const data = await res.json();
+                        alert(data.data ? data.data : 'İşlem başarısız.');
+                    } catch (e) { 
+                        alert('Ağ hatası oluştu!'); 
+                    }
+                    this.innerHTML = originalText; this.disabled = false;
+                });
+            }
         });
         </script>
         <?php
@@ -1499,7 +1591,7 @@ class QualityLife_Admin_Pages {
         $barcode = sanitize_text_field($_POST['k_barcode']);
         $info = sanitize_textarea_field($_POST['k_info']);
         
-        if($id > 0 && !empty($barcode) && !empty($info)) {
+       if($id > 0 && !empty($barcode) && !empty($info)) {
             $wpdb->update(
                 $table_name,
                 ['barcode' => $barcode, 'product_info' => $info],
@@ -1509,6 +1601,14 @@ class QualityLife_Admin_Pages {
         
         wp_redirect(admin_url('admin.php?page=ql-ai-settings&updated=1')); exit;
     }
+
+   public function save_onesignal_settings() {
+        if(!check_admin_referer('ql_onesignal_sec')) return;
+        update_option('ql_onesignal_app_id', sanitize_text_field(trim($_POST['os_app_id'])));
+        update_option('ql_onesignal_rest_key', sanitize_text_field(trim($_POST['os_rest_key'])));
+        wp_redirect(admin_url('admin.php?page=ql-ai-settings&updated=1')); exit;
+    }
+
     // --- YENİ: MALİYET RAPORU SAYFASI ---
    public function page_costs() {
         global $wpdb;
@@ -1952,58 +2052,7 @@ class QualityLife_Admin_Pages {
                 .ql-table-wrap { box-shadow: inset -10px 0 10px -10px rgba(0,0,0,0.1); }
             }
         </style>
-       <?php
-// AYARLARI KAYDETME MOTORU
-if (isset($_POST['ql_save_onesignal']) && current_user_can('manage_options')) {
-    update_option('ql_onesignal_app_id', sanitize_text_field($_POST['os_app_id']));
-    update_option('ql_onesignal_rest_key', sanitize_text_field($_POST['os_rest_key']));
-    echo '<div style="background:#dcfce7; color:#166534; padding:10px 15px; border-radius:8px; margin-bottom:15px; font-weight:bold;">✅ Bildirim Ayarları Başarıyla Kaydedildi!</div>';
-}
-// AYARLARI VERİTABANINDAN ÇEK
-$saved_app_id = get_option('ql_onesignal_app_id', '');
-$saved_rest_key = get_option('ql_onesignal_rest_key', '');
-?>
-
-<div style="background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.04); border: 1px solid #e2e8f0; margin-bottom: 25px;">
-    <h3 style="margin-top: 0; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">🔔 Web Push (OneSignal) Ayarları</h3>
-    <form method="post" action="">
-        <input type="hidden" name="ql_save_onesignal" value="1">
-        <table class="form-table" style="margin-bottom: 15px;">
-            <tr>
-                <th scope="row" style="width: 200px;"><label for="os_app_id">OneSignal App ID:</label></th>
-                <td><input name="os_app_id" type="text" id="os_app_id" value="<?php echo esc_attr($saved_app_id); ?>" style="width: 100%; max-width: 400px; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1;"></td>
-            </tr>
-            <tr>
-                <th scope="row" style="width: 200px;"><label for="os_rest_key">REST API Key:</label></th>
-                <td><input name="os_rest_key" type="password" id="os_rest_key" value="<?php echo esc_attr($saved_rest_key); ?>" style="width: 100%; max-width: 400px; padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1;"></td>
-            </tr>
-        </table>
-        <button type="submit" style="background: #1e293b; color: #fff; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer;">Ayarları Kaydet</button>
-    </form>
-</div>
-
-<?php if(!empty($saved_app_id)): ?>
-<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
-<script>
-  window.OneSignalDeferred = window.OneSignalDeferred || [];
-  OneSignalDeferred.push(function(OneSignal) {
-    OneSignal.init({
-      appId: "<?php echo esc_js($saved_app_id); ?>",
-      notifyButton: { enable: true },
-    });
-  });
-</script>
-
-<div style="background: #4f46e5; color: #fff; padding: 15px; border-radius: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-    <div style="display: flex; align-items: center; gap: 10px;">
-        <span style="font-size: 20px;">🔔</span>
-        <span style="font-size: 14px; font-weight: 600;">Bu cihaza bildirim gelmesini istiyorsanız aktif edin.</span>
-    </div>
-    <button onclick="OneSignal.User.PushSubscription.optIn()" style="background: #fff; color: #4f46e5; border: none; padding: 8px 16px; border-radius: 8px; font-weight: 700; cursor: pointer;">İzin Ver</button>
-</div>
-<?php endif; ?>
-
-        <div class="ql-hist-wrap">
+   <div class="ql-hist-wrap">
             <h1 style="margin-bottom: 20px; font-size: 24px; font-weight: 800; display:flex; align-items:center; gap:10px;">
                 🕒 Ürün Eğitimi İşlem Geçmişi
             </h1>
@@ -2249,6 +2298,7 @@ $saved_rest_key = get_option('ql_onesignal_rest_key', '');
                         this.disabled = false;
                     });
                 });
+                
             });
         </script>
         <?php

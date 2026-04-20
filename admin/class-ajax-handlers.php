@@ -18,8 +18,8 @@ class QualityLife_AJAX_Handlers {
         add_action( 'wp_ajax_ql_load_pending_cards', [ $this, 'ajax_load_pending_cards' ] );
         // Uzman Dokunuşu: AJAX güvenliği için admin_init kancasını kullanıyoruz (Fonksiyonlar yüklendikten sonra çalışır)
         add_action( 'admin_init', [ $this, 'secure_ajax_endpoints' ] );
-        add_action( 'wp_ajax_ql_restore_history', [ $this, 'ajax_restore_history' ] );
-        
+       add_action( 'wp_ajax_ql_restore_history', [ $this, 'ajax_restore_history' ] );
+        add_action( 'wp_ajax_ql_test_onesignal', [ $this, 'ajax_test_onesignal' ] );
     }
 
     public function secure_ajax_endpoints() {
@@ -830,5 +830,41 @@ class QualityLife_AJAX_Handlers {
         ]);
 
         wp_send_json_success();
+    }
+    public function ajax_test_onesignal() {
+        check_ajax_referer('ql_ajax_nonce', 'security');
+        if (!current_user_can('manage_options')) wp_send_json_error('Yetkisiz işlem.');
+
+        $app_id = get_option('ql_onesignal_app_id');
+        $rest_key = get_option('ql_onesignal_rest_key');
+
+        if (empty($app_id) || empty($rest_key)) {
+            wp_send_json_error('Lütfen önce App ID ve REST API Key kaydedin.');
+        }
+
+        $fields = array(
+            'app_id' => $app_id,
+            'included_segments' => array('All'),
+            'contents' => array("en" => "Bu bir test bildirimidir. Sistem tıkır tıkır çalışıyor!"),
+            'headings' => array("en" => "🚀 Test Başarılı!"),
+        );
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, "https://onesignal.com/api/v1/notifications");
+        curl_setopt($ch, CURLOPT_HTTPHEADER, array('Content-Type: application/json; charset=utf-8', 'Authorization: Basic ' . $rest_key));
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
+        curl_setopt($ch, CURLOPT_HEADER, FALSE);
+        curl_setopt($ch, CURLOPT_POST, TRUE);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($fields));
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, FALSE);
+        $response = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($http_code == 200) {
+            wp_send_json_success('Test bildirimi başarıyla gönderildi! Telefonunuzu kontrol edin.');
+        } else {
+            wp_send_json_error('OneSignal Hatası: ' . $response);
+        }
     }
 }
