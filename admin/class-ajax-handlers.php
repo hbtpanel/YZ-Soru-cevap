@@ -842,11 +842,15 @@ class QualityLife_AJAX_Handlers {
             wp_send_json_error('Lütfen önce App ID ve REST API Key kaydedin.');
         }
 
+      $target_url = get_site_url() . "/wp-admin/admin.php?page=ql-ai-questions";
+
         $fields = array(
             'app_id' => $app_id,
             'included_segments' => array('All'),
             'contents' => array("en" => "Bu bir test bildirimidir. Sistem tıkır tıkır çalışıyor!"),
             'headings' => array("en" => "🚀 Test Başarılı!"),
+            'ios_sound' => 'default',
+            'url' => $target_url
         );
 
         $ch = curl_init();
