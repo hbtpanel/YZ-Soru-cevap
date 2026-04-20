@@ -236,13 +236,22 @@ class QualityLife_Admin_Pages {
                     <?php if(!empty($saved_app_id)): ?>
                     <div style="margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 25px;">
                         <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
-                        <script>
+                      <script>
                           window.OneSignalDeferred = window.OneSignalDeferred || [];
                           OneSignalDeferred.push(function(OneSignal) {
                             OneSignal.init({
                               appId: "<?php echo esc_js($saved_app_id); ?>",
                               notifyButton: { enable: true },
                             });
+                          });
+
+                          // UZMAN DOKUNUŞU: iOS Kilit Ekranı Müzik Çalar Temizleyicisi
+                          document.addEventListener("visibilitychange", function() {
+                              if (document.hidden && 'mediaSession' in navigator) {
+                                  // Ekran kilitlendiğinde veya uygulama alta atıldığında medya kimliğini sil
+                                  navigator.mediaSession.metadata = null;
+                                  navigator.mediaSession.playbackState = 'none';
+                              }
                           });
                         </script>
                         <div style="background: #f8fafc; border: 1px solid #cbd5e1; padding: 15px 20px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
