@@ -57,7 +57,9 @@ class QualityLife_AI_Core {
     public function activate_plugin() {
         global $wpdb;
         $charset_collate = $wpdb->get_charset_collate();
-        
+
+        require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
+
         // 1. Ürün Bilgi Tablosu (Manuel RAG için)
         $table_knowledge = $wpdb->prefix . 'ql_product_knowledge';
         $sql1 = "CREATE TABLE $table_knowledge (
@@ -67,8 +69,9 @@ class QualityLife_AI_Core {
             PRIMARY KEY  (id),
             UNIQUE KEY barcode (barcode)
         ) $charset_collate;";
-        
-        // 2. Soru Arşivi ve Vektör Tablosu (Yeni Yapay Zeka Modeli İçin)
+        dbDelta( $sql1 );
+
+        // 2. Soru Arşivi ve Vektör Tablosu - tüm sütunlar eksiksiz tanımlı
         $table_all_questions = $wpdb->prefix . 'ql_all_questions';
         $sql2 = "CREATE TABLE $table_all_questions (
             id bigint(20) NOT NULL AUTO_INCREMENT,
@@ -76,11 +79,16 @@ class QualityLife_AI_Core {
             store_id varchar(50) NOT NULL,
             product_name varchar(255),
             model_code varchar(100),
+            barcode varchar(100),
             question_text text,
             answer_text text,
             status varchar(20),
             created_date datetime,
-            vector_data longtext, -- YENİ: Vektör Koordinatları (JSON) burada tutulacak
+            vector_data longtext,
+            image_url varchar(500),
+            customer_name varchar(100),
+            product_url varchar(500),
+            is_golden tinyint(1) DEFAULT 0,
             PRIMARY KEY  (id),
             UNIQUE KEY trendyol_id (trendyol_id),
             INDEX status_idx (status),
@@ -88,42 +96,27 @@ class QualityLife_AI_Core {
             INDEX golden_idx (is_golden),
             INDEX model_idx (model_code)
         ) $charset_collate;";
-
-        // --- YENİ: ÜRÜN EĞİTİMİ İŞLEM GEÇMİŞİ (LOG) TABLOSU ---
-    $table_history = $wpdb->prefix . 'ql_product_history';
-    
-    $sql_history = "CREATE TABLE $table_history (
-        id bigint(20) NOT NULL AUTO_INCREMENT,
-        barcode varchar(100) NOT NULL,
-        store_name varchar(100) DEFAULT '' NOT NULL,
-        product_name varchar(255) DEFAULT '' NOT NULL,
-        image_url varchar(255) DEFAULT '' NOT NULL,
-        old_content longtext NOT NULL,
-        new_content longtext NOT NULL,
-        change_source varchar(50) DEFAULT '' NOT NULL,
-        changed_by bigint(20) DEFAULT 0 NOT NULL,
-        created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
-        PRIMARY KEY  (id),
-        KEY barcode (barcode)
-    ) $charset_collate;";
-
-    // dbDelta fonksiyonu ile tabloyu güvenli bir şekilde oluştur veya güncelle
-    require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
-    dbDelta( $sql_history );
-    // --- UZMAN DOKUNUŞU: OTOMATİK ONESIGNAL DOSYASI KOPYALAYICI ---
-    // Eklenti içindeki JS dosyasını bul
-    $source_file = plugin_dir_path( __FILE__ ) . 'OneSignalSDKWorker.js'; 
-    // WordPress'in ana dizinini (public_html / ABSPATH) hedefle
-    $destination_file = ABSPATH . 'OneSignalSDKWorker.js'; 
-
-    // Eğer kaynak dosya varsa ve ana dizinde henüz yoksa (veya eskiyse), otomatik kopyala!
-    if ( file_exists( $source_file ) ) {
-        @copy( $source_file, $destination_file );
-    }
-        
-        require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
-        dbDelta( $sql1 );
         dbDelta( $sql2 );
+
+        // 3. Ürün Eğitimi İşlem Geçmişi (LOG) Tablosu
+        $table_history = $wpdb->prefix . 'ql_product_history';
+        $sql_history = "CREATE TABLE $table_history (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            barcode varchar(100) NOT NULL,
+            store_name varchar(100) DEFAULT '' NOT NULL,
+            product_name varchar(255) DEFAULT '' NOT NULL,
+            image_url varchar(255) DEFAULT '' NOT NULL,
+            old_content longtext NOT NULL,
+            new_content longtext NOT NULL,
+            change_source varchar(50) DEFAULT '' NOT NULL,
+            changed_by bigint(20) DEFAULT 0 NOT NULL,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
+            PRIMARY KEY  (id),
+            KEY barcode (barcode)
+        ) $charset_collate;";
+        dbDelta( $sql_history );
+
+        // 4. API Maliyet Log Tablosu - created_date olarak düzeltildi (created_at değil)
         $table_logs = $wpdb->prefix . 'ql_api_logs';
         $sql_logs = "CREATE TABLE $table_logs (
             id bigint(20) NOT NULL AUTO_INCREMENT,
@@ -131,10 +124,32 @@ class QualityLife_AI_Core {
             tokens_in int(11) DEFAULT 0,
             tokens_out int(11) DEFAULT 0,
             cost_usd decimal(10,6) DEFAULT 0.000000,
-            created_at datetime DEFAULT '0000-00-00 00:00:00',
+            created_date datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
             PRIMARY KEY  (id)
         ) $charset_collate;";
-        dbDelta($sql_logs);
+        dbDelta( $sql_logs );
+
+        // 5. YENİ: Hata Logları Tablosu (API, Cron, Trendyol hataları için)
+        $table_errors = $wpdb->prefix . 'ql_error_logs';
+        $sql_errors = "CREATE TABLE $table_errors (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            error_type varchar(50) NOT NULL,
+            error_message text NOT NULL,
+            error_details longtext,
+            is_read tinyint(1) DEFAULT 0,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
+            PRIMARY KEY  (id),
+            INDEX type_idx (error_type),
+            INDEX read_idx (is_read)
+        ) $charset_collate;";
+        dbDelta( $sql_errors );
+
+        // OTOMATİK ONESIGNAL DOSYASI KOPYALAYICI
+        $source_file = plugin_dir_path( __FILE__ ) . 'OneSignalSDKWorker.js';
+        $destination_file = ABSPATH . 'OneSignalSDKWorker.js';
+        if ( file_exists( $source_file ) ) {
+            @copy( $source_file, $destination_file );
+        }
     }
     
 }

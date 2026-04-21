@@ -422,31 +422,51 @@ $api_key = self::decrypt_data($encrypted_key);
         }
         return $all_items;
     }
+
     // --- GİDER (MALİYET) TAKİP MOTORU ---
     public static function log_api_cost($action_type, $usage_data) {
         if (empty($usage_data)) return;
         global $wpdb;
         $table_logs = $wpdb->prefix . 'ql_api_logs';
-        
-        $tokens_in = isset($usage_data['promptTokenCount']) ? intval($usage_data['promptTokenCount']) : 0;
-        $tokens_out = isset($usage_data['candidatesTokenCount']) ? intval($usage_data['candidatesTokenCount']) : 0;
-        
-       $cost = 0;
-        // Eğer işlem içinde İNDEKS veya VEKTÖR kelimesi geçiyorsa Embedding tarifesini uygula
+
+        $tokens_in         = isset($usage_data['promptTokenCount'])     ? intval($usage_data['promptTokenCount'])     : 0;
+        $tokens_candidates = isset($usage_data['candidatesTokenCount']) ? intval($usage_data['candidatesTokenCount']) : 0;
+        // Thinking tokenler çıkış fiyatına ($2.50/1M) DAHİL — Standard API'de ayrı tarife YOK
+        $tokens_thinking   = isset($usage_data['thoughtsTokenCount'])   ? intval($usage_data['thoughtsTokenCount'])   : 0;
+        $tokens_out        = $tokens_candidates + $tokens_thinking; // Toplam çıktı
+
+        $cost = 0;
+
         if (strpos($action_type, 'İNDEKS') !== false || strpos($action_type, 'VEKTÖR') !== false) {
-            // Embedding Modeli: 1 Milyon Token = $0.10 (Güncel v4 Tahmini)
+            // Embedding Modeli (gemini-embedding-001): $0.10/1M token
             $cost = ($tokens_in / 1000000) * 0.10;
         } else {
-            // GÜNCEL ÜCRETLİ KATMAN: Girdi 1M = $0.30 | Çıktı 1M = $2.50
-            $cost = (($tokens_in / 1000000) * 0.30) + (($tokens_out / 1000000) * 2.50);
+            // Standard API (generateContent) — Gemini 2.5 Flash
+            // Giriş: $0.30/1M | Çıkış (thinking dahil): $2.50/1M
+            $cost = (($tokens_in  / 1000000) * 0.30)
+                  + (($tokens_out / 1000000) * 2.50);
         }
 
         $wpdb->insert($table_logs, [
-            'action_type' => $action_type,
-            'tokens_in'   => $tokens_in,
-            'tokens_out'  => $tokens_out,
-            'cost_usd'    => $cost,
-            'created_date'=> current_time('mysql')
+            'action_type'  => $action_type,
+            'tokens_in'    => $tokens_in,
+            'tokens_out'   => $tokens_out,
+            'cost_usd'     => $cost,
+            'created_date' => current_time('mysql')
+        ]);
+    }
+
+    // --- HATA LOGLAMA MOTORU ---
+    public static function log_error($type, $message, $details = '') {
+        global $wpdb;
+        $table_errors = $wpdb->prefix . 'ql_error_logs';
+        if($wpdb->get_var("SHOW TABLES LIKE '$table_errors'") != $table_errors) return;
+
+        $wpdb->insert($table_errors, [
+            'error_type'    => $type,
+            'error_message' => $message,
+            'error_details' => is_array($details) || is_object($details) ? wp_json_encode($details, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) : $details,
+            'created_at'    => current_time('mysql')
         ]);
     }
 }

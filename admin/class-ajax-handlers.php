@@ -18,8 +18,10 @@ class QualityLife_AJAX_Handlers {
         add_action( 'wp_ajax_ql_load_pending_cards', [ $this, 'ajax_load_pending_cards' ] );
         // Uzman Dokunuşu: AJAX güvenliği için admin_init kancasını kullanıyoruz (Fonksiyonlar yüklendikten sonra çalışır)
         add_action( 'admin_init', [ $this, 'secure_ajax_endpoints' ] );
-       add_action( 'wp_ajax_ql_restore_history', [ $this, 'ajax_restore_history' ] );
+        add_action( 'wp_ajax_ql_restore_history', [ $this, 'ajax_restore_history' ] );
         add_action( 'wp_ajax_ql_test_onesignal', [ $this, 'ajax_test_onesignal' ] );
+        // Geçmiş maliyet kayıtlarını yeni fiyatlarla yeniden hesapla
+        add_action( 'wp_ajax_ql_recalculate_costs', [ $this, 'ajax_recalculate_costs' ] );
     }
 
     public function secure_ajax_endpoints() {
@@ -36,10 +38,10 @@ class QualityLife_AJAX_Handlers {
   public function ajax_ask_ai() {
         check_ajax_referer('ql_ajax_nonce', 'security');
         global $wpdb;
-        $question   = sanitize_textarea_field($_POST['question']);
+        $question   = sanitize_textarea_field(wp_unslash($_POST['question']));
         $barcode    = sanitize_text_field($_POST['barcode']);
         $store_id   = isset($_POST['store_id']) ? sanitize_text_field($_POST['store_id']) : '';
-        $quick_note = isset($_POST['quick_note']) ? sanitize_textarea_field($_POST['quick_note']) : '';
+        $quick_note = isset($_POST['quick_note']) ? sanitize_textarea_field(wp_unslash($_POST['quick_note'])) : '';
         
         // OTOMATİK RAG GÜNCELLEME VE LOGLAMA: Eğer not varsa kalıcı hafızaya ekle ve logla
         if (!empty($quick_note)) {
@@ -99,14 +101,14 @@ class QualityLife_AJAX_Handlers {
 
         $trendyol_secret = QualityLife_API_Services::decrypt_data($store['secret']);
         $q_id = sanitize_text_field($_POST['q_id']);
-        $answer = sanitize_textarea_field($_POST['answer']);
+        $answer = sanitize_textarea_field(wp_unslash($_POST['answer']));
         
         $result = QualityLife_API_Services::send_trendyol_answer($store_id, $store['key'], $trendyol_secret, $q_id, $answer);
         
         if ($result) {
             // SESSİZ ÖĞRENME (AUTO-GOLDEN): Gönderilen cevabı anında vektörleyip arşive kazıyoruz!
             $table = $wpdb->prefix . 'ql_all_questions';
-            $q_text = sanitize_textarea_field($_POST['q_text'] ?? '');
+            $q_text = sanitize_textarea_field(wp_unslash($_POST['q_text'] ?? ''));
             $barcode = sanitize_text_field($_POST['barcode'] ?? '');
             $p_name = sanitize_text_field($_POST['p_name'] ?? '');
             
@@ -265,7 +267,14 @@ class QualityLife_AJAX_Handlers {
             }
         } else {
             $err = isset($result['error']) ? $result['error'] : 'Bilinmeyen hata';
-            wp_send_json_error(['message' => $err]);
+            QualityLife_API_Services::log_error('AJAX_VECTOR_ERROR', 'Arayüz üzerinden toplu indeksleme sırasında hata: ' . $err, $result);
+            
+            // Sonsuz döngü engellemesi için hatalı olanları ERROR yap
+            foreach ($ids as $failed_id) {
+                $wpdb->update($table, ['vector_data' => 'ERROR'], ['id' => $failed_id]);
+            }
+            
+            wp_send_json_error(['message' => $err . ' (Sistem kilitlenmemesi için hatalı sorular atlandı)']);
         }
 
         $remaining = $wpdb->get_var("SELECT COUNT(id) FROM $table WHERE vector_data IS NULL");
@@ -370,7 +379,7 @@ class QualityLife_AJAX_Handlers {
         check_ajax_referer('ql_ajax_nonce', 'security');
         global $wpdb;
         $barcode = sanitize_text_field($_POST['barcode']);
-        $info = sanitize_textarea_field($_POST['info']);
+        $info = sanitize_textarea_field(wp_unslash($_POST['info']));
         $is_append = isset($_POST['is_append']) && $_POST['is_append'] === 'true'; 
         
         $table_rag = $wpdb->prefix . 'ql_product_knowledge';
@@ -872,5 +881,53 @@ class QualityLife_AJAX_Handlers {
         } else {
             wp_send_json_error('OneSignal Hatası: ' . $response);
         }
+    }
+
+    // --- GEÇMİŞ MALİYET KAYITLARINI YENİDEN HESAPLA ---
+    public function ajax_recalculate_costs() {
+        check_ajax_referer('ql_ajax_nonce', 'security');
+        if (!current_user_can('manage_options')) wp_send_json_error('Yetkisiz işlem.');
+
+        global $wpdb;
+        $table = $wpdb->prefix . 'ql_api_logs';
+
+        // Tüm kayıtları çek
+        $logs = $wpdb->get_results("SELECT id, action_type, tokens_in, tokens_out FROM $table");
+
+        if (empty($logs)) {
+            wp_send_json_success(['updated' => 0, 'message' => 'Hesaplanacak kayıt bulunamadı.']);
+        }
+
+        $updated = 0;
+        foreach ($logs as $log) {
+            $tokens_in  = intval($log->tokens_in);
+            $tokens_out = intval($log->tokens_out);
+
+            // Embedding mi, LLM mi?
+            $is_embedding = (strpos($log->action_type, 'İNDEKS') !== false || strpos($log->action_type, 'VEKTÖR') !== false);
+
+            if ($is_embedding) {
+                // Embedding: $0.10/1M — değişmedi
+                $new_cost = ($tokens_in / 1000000) * 0.10;
+            } else {
+                // Standard API — Gemini 2.5 Flash
+                // Giriş: $0.30/1M | Çıkış (thinking dahil): $2.50/1M
+                // Not: Eski kayıtlarda tokens_out = candidates + thinking (birleşik)
+                $new_cost = (($tokens_in  / 1000000) * 0.30)
+                          + (($tokens_out / 1000000) * 2.50);
+            }
+
+            $wpdb->update(
+                $table,
+                ['cost_usd' => round($new_cost, 8)],
+                ['id' => $log->id]
+            );
+            $updated++;
+        }
+
+        wp_send_json_success([
+            'updated' => $updated,
+            'message' => "$updated kayıt yeni fiyatlarla güncellendi."
+        ]);
     }
 }

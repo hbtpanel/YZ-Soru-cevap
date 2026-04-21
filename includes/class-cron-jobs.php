@@ -9,33 +9,36 @@ class QualityLife_Cron_Jobs {
         add_action( 'ql_daily_fetch_event', [ $this, 'run_daily_fetch' ] );
         add_action( 'ql_vector_indexer_event', [ $this, 'run_vector_indexer' ] );
 
-        // --- YENİ: DIŞARIDAN TETİKLEME KONTROLÜ ---
-        add_action( 'init', [ $this, 'check_external_trigger' ] );
+        // --- YENİ: DIŞARIDAN TETİKLEME KONTROLÜ (PERFORMANS OPTİMİZASYONU) ---
+        // init kancası tüm sayfa yüklemelerini kilitlediği için daha hafif olan admin_post uç noktasına taşıdık
+        add_action( 'admin_post_nopriv_ql_cron_trigger', [ $this, 'check_external_trigger' ] );
+        add_action( 'admin_post_ql_cron_trigger', [ $this, 'check_external_trigger' ] );
 
         $this->schedule_events();
     }
 
 // Dışarıdan bir URL ile botu zorla uyandırma fonksiyonu
     public function check_external_trigger() {
-        if ( isset($_GET['ql_trigger']) && $_GET['ql_trigger'] === 'ql_auto_pilot_789' ) {
-            
-            // UZMAN DOKUNUŞU: Ya admin girişi olmalı, ya da Plesk'in gizli geçit şifresi (token) doğru olmalı.
-            $plesk_token = isset($_GET['token']) ? $_GET['token'] : '';
-            if ( !current_user_can('manage_options') && $plesk_token !== 'gizli_cron_sifreniz_99x' ) {
-                die('Güvenlik Kalkanı: Yetkisiz tetikleme.');
-            }
-            
-            // UZMAN DOKUNUŞU: Yüzlerce soru işlenirken PHP'nin 30 saniye kuralına takılıp çökmesini (Fatal Error) engelliyoruz
-            set_time_limit(0);
-            
-            // 1. Veri Çekme Botunu Çalıştır
-            $this->run_daily_fetch();
-            
-            // 2. İndeksleme Botunu Çalıştır
-            $this->run_vector_indexer();
-
-            die('Quality Life AI: Gece botları başarıyla tetiklendi ve görev tamamlandı.');
+        // Yeni tetikleme URL'i: /wp-admin/admin-post.php?action=ql_cron_trigger&token=XXX
+        $saved_token = get_option('ql_cron_token', 'gizli_cron_sifreniz_99x');
+        $plesk_token = isset($_GET['token']) ? sanitize_text_field($_GET['token']) : '';
+        
+        if ( !current_user_can('manage_options') && $plesk_token !== $saved_token ) {
+            die('Güvenlik Kalkanı: Yetkisiz tetikleme.');
         }
+        
+        // UZMAN DOKUNUŞU: Yüzlerce soru işlenirken PHP'nin 30 saniye kuralına takılıp çökmesini (Fatal Error) engelliyoruz
+        set_time_limit(0);
+        
+        QualityLife_API_Services::log_error('CRON_TRIGGER', 'Harici bot tetikleyicisi çalıştırıldı.', 'Tetikleyen IP: ' . $_SERVER['REMOTE_ADDR']);
+        
+        // 1. Veri Çekme Botunu Çalıştır
+        $this->run_daily_fetch();
+        
+        // 2. İndeksleme Botunu Çalıştır
+        $this->run_vector_indexer();
+
+        die('Quality Life AI: Gece botları başarıyla tetiklendi ve görev tamamlandı.');
     }
 
     public function add_cron_intervals( $schedules ) {
@@ -88,7 +91,10 @@ class QualityLife_Cron_Jobs {
                     'timeout'    => 20
                 ]);
 
-                if (is_wp_error($response)) break; // API patlarsa diğer mağazaya geç
+                if (is_wp_error($response)) {
+                    QualityLife_API_Services::log_error('TRENDYOL_CRON_ERROR', 'Trendyol sorularını çekerken hata (Mağaza: '.$store_id.')', $response->get_error_message());
+                    break;
+                }
 
                 $body = json_decode(wp_remote_retrieve_body($response), true);
                 $questions = $body['content'] ?? [];
@@ -96,9 +102,21 @@ class QualityLife_Cron_Jobs {
 
                 if(empty($questions)) break;
 
+                // YENİ: N+1 Veritabanı Darboğazını Kırmak İçin Toplu ID Çekme (RAM Optimizasyonu)
+                $incoming_ids = [];
                 foreach ($questions as $q) {
-                    $exists = $wpdb->get_var($wpdb->prepare("SELECT id FROM $table WHERE trendyol_id = %s", $q['id']));
-                    if (!$exists) { // Veritabanında yoksa yeni ekle, vektörünü boş bırak
+                    $incoming_ids[] = strval($q['id']);
+                }
+                
+                $existing_ids = [];
+                if (!empty($incoming_ids)) {
+                    $placeholders = implode(',', array_fill(0, count($incoming_ids), '%s'));
+                    $query = $wpdb->prepare("SELECT trendyol_id FROM $table WHERE trendyol_id IN ($placeholders)", $incoming_ids);
+                    $existing_ids = $wpdb->get_col($query);
+                }
+
+                foreach ($questions as $q) {
+                    if (!in_array(strval($q['id']), $existing_ids, true)) { // RAM üzerinde sorgula, veritabanını yorma
                         $wpdb->insert($table, [
                             'trendyol_id'   => $q['id'],
                             'store_id'      => $store_id,
@@ -123,7 +141,7 @@ class QualityLife_Cron_Jobs {
         }
     }
 
-   // --- İŞÇİ 2: SÜREKLİ İNDEKSLEME BOTU (Google'a Yazma) ---
+    // --- İŞÇİ 2: SÜREKLİ İNDEKSLEME BOTU (Google'a Yazma) ---
     public function run_vector_indexer() {
         global $wpdb;
         $table = $wpdb->prefix . 'ql_all_questions';
@@ -153,6 +171,15 @@ class QualityLife_Cron_Jobs {
                         ['id' => $ids[$index]]
                     );
                 }
+            }
+        } else {
+            // YENİ: Sonsuz döngüden (Infinite Loop) kaçınma kalkanı ve Hata Loglama
+            $error_msg = isset($result['error']) ? $result['error'] : 'Bilinmeyen Vektör Hatası';
+            QualityLife_API_Services::log_error('CRON_VECTOR_ERROR', 'Toplu indeksleme sırasında hata: ' . $error_msg, $result);
+            
+            // Hatalı vektörleri 'ERROR' olarak işaretle ki aynı 100 soruda sonsuza kadar takılı kalmasın.
+            foreach ($ids as $failed_id) {
+                $wpdb->update($table, ['vector_data' => 'ERROR'], ['id' => $failed_id]);
             }
         }
     }

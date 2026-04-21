@@ -17,16 +17,34 @@ class QualityLife_Admin_Pages {
      // Uzman Dokunuşu: Menü daraltıldığında (collapse) kaybolmaması ve premium görünmesi için özel Base64 SVG (Yapay Zeka Kıvılcımı) ikonu kullanıyoruz.
         $svg_icon = 'data:image/svg+xml;base64,' . base64_encode('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"></path></svg>');
         
-        add_menu_page('YZ Eğitim ve Ayarlar', 'YZ Asistan', 'manage_options', 'ql-ai-settings', [ $this, 'page_settings' ], $svg_icon, 30);
+        global $wpdb;
+        $table_errors = $wpdb->prefix . 'ql_error_logs';
+        $unread_count = 0;
+        if ($wpdb->get_var("SHOW TABLES LIKE '$table_errors'") === $table_errors) {
+            $unread_count = (int) $wpdb->get_var("SELECT COUNT(id) FROM $table_errors WHERE is_read = 0");
+        }
         
-        // Uzman Dokunuşu: İlk alt menüyü eklenti adından ayırıp "Ayarlar" yapıyoruz. Tüm menülere uyumlu ikonlar ekliyoruz.
+        $menu_title = 'YZ Asistan';
+        if ($unread_count > 0) {
+            // Pulse animasyonu ile dikkat çeken uyarı balonu
+            $menu_title .= ' <span class="update-plugins count-'.$unread_count.'"><span class="plugin-count" style="background:#ef4444; animation: qlErrorPulse 1.5s infinite;">'.$unread_count.'</span></span>';
+            add_action('admin_head', function() { echo '<style>@keyframes qlErrorPulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); background:#dc2626; } 100% { transform: scale(1); } }</style>'; });
+        }
+
+        add_menu_page('YZ Eğitim ve Ayarlar', $menu_title, 'manage_options', 'ql-ai-settings', [ $this, 'page_settings' ], $svg_icon, 30);
+        
         add_submenu_page('ql-ai-settings', 'Ayarlar', '⚙️ Ayarlar', 'manage_options', 'ql-ai-settings', [ $this, 'page_settings' ]); 
         add_submenu_page('ql-ai-settings', 'Genel Bakış', '📊 Genel Bakış', 'manage_options', 'ql-ai-dashboard', [ $this, 'page_dashboard' ]);
         add_submenu_page('ql-ai-settings', 'Bekleyen Sorular', '💬 Bekleyen Sorular', 'manage_options', 'ql-ai-questions', [ $this, 'page_questions' ]);
-       add_submenu_page('ql-ai-settings', 'Soru Arşivi', '🗄️ Soru Arşivi', 'manage_options', 'ql-ai-past-questions', [ $this, 'page_past_questions' ]);
+        add_submenu_page('ql-ai-settings', 'Soru Arşivi', '🗄️ Soru Arşivi', 'manage_options', 'ql-ai-past-questions', [ $this, 'page_past_questions' ]);
         add_submenu_page('ql-ai-settings', 'Ürün Eğitimi (RAG)', '🧠 Ürün Eğitimi', 'manage_options', 'ql-ai-training', [$this, 'page_product_training']);
         add_submenu_page('ql-ai-settings', 'İşlem Geçmişi', '🕒 İşlem Geçmişi', 'manage_options', 'ql-ai-history', [$this, 'page_product_history']);
         add_submenu_page('ql-ai-settings', 'Maliyet Raporu', '💸 Maliyet Raporu', 'manage_options', 'ql-ai-costs', [$this, 'page_costs']);
+        
+        // Yeni Alt Menü: Hata Logları. Okunmamış varsa kırmızı badge ekle.
+        $sub_error_title = '🚨 Hata Logları';
+        if ($unread_count > 0) $sub_error_title .= ' <span class="update-plugins count-'.$unread_count.'"><span class="plugin-count" style="background:#ef4444;">'.$unread_count.'</span></span>';
+        add_submenu_page('ql-ai-settings', 'Hata Logları', $sub_error_title, 'manage_options', 'ql-ai-error-logs', [$this, 'page_error_logs']);
     }
 
   // --- SAYFA 1: AYARLAR ---
@@ -132,8 +150,20 @@ class QualityLife_Admin_Pages {
                         
                         <label>Gemini API Anahtarı:</label>
                         <input type="password" name="gemini_api_key" class="ql-input" value="<?php echo esc_attr($gemini_api_key); ?>" placeholder="AIizaSy..." style="max-width: 500px;">
-                        
-                        <div style="margin-top: 10px;">
+
+                        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--ql-border);">
+                            <label>🔑 Cron Güvenlik Tokeni (Nöbetçi & URL Tetikleyici):</label>
+                            <p style="color: var(--ql-text-light); font-size: 13px; margin-bottom: 10px;">Bu token <code>ql_nobetci.php</code> ve URL tetikleyici için kullanılır. Varsayılandan farklı bir değer belirleyin.</p>
+                            <input type="text" name="cron_token" class="ql-input" value="<?php echo esc_attr(get_option('ql_cron_token', 'gizli_cron_sifreniz_99x')); ?>" style="max-width: 500px; font-family: monospace;">
+                        </div>
+
+                        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--ql-border);">
+                            <label>💱 USD/TL Döviz Kuru (ROI Hesaplaması İçin):</label>
+                            <p style="color: var(--ql-text-light); font-size: 13px; margin-bottom: 10px;">API maliyetleri USD cinsinden kaydedilir. Dashboard'daki TL karşılığı için güncel kuru girin.</p>
+                            <input type="number" step="0.01" name="usd_exchange_rate" class="ql-input" value="<?php echo esc_attr(get_option('ql_usd_exchange_rate', '35')); ?>" style="max-width: 150px;" placeholder="35.00">
+                        </div>
+
+                        <div style="margin-top: 15px;">
                             <button type="submit" class="ql-btn">💾 Güvenli Kaydet</button>
                         </div>
                     </form>
@@ -1592,12 +1622,23 @@ class QualityLife_Admin_Pages {
     // --- FORM İŞLEMCİLERİ ---
     public function save_global_settings() {
         if(!check_admin_referer('ql_global_nonce')) return;
-        
+
         // Gemini API'yi şifreleyerek kaydediyoruz!
         $encrypted_gemini = QualityLife_API_Services::encrypt_data(sanitize_text_field($_POST['gemini_api_key']));
         update_option('ql_gemini_api_key', $encrypted_gemini);
-        
-        update_option('ql_gemini_system_prompt', sanitize_textarea_field($_POST['global_prompt']));
+
+        update_option('ql_gemini_system_prompt', sanitize_textarea_field(wp_unslash($_POST['global_prompt'])));
+
+        // DÜZELTME: Cron token artık admin panelinden dinamik olarak kaydediliyor
+        if (!empty($_POST['cron_token'])) {
+            update_option('ql_cron_token', sanitize_text_field($_POST['cron_token']));
+        }
+
+        // USD/TL döviz kuru
+        if (!empty($_POST['usd_exchange_rate'])) {
+            update_option('ql_usd_exchange_rate', floatval($_POST['usd_exchange_rate']));
+        }
+
         wp_redirect(admin_url('admin.php?page=ql-ai-settings&updated=1')); exit;
     }
 
@@ -1616,10 +1657,10 @@ class QualityLife_Admin_Pages {
         }
         
         $stores[$seller_id] = [
-            'name' => sanitize_text_field($_POST['store_name']),
-            'key' => sanitize_text_field($_POST['api_key']),
+            'name' => sanitize_text_field(wp_unslash($_POST['store_name'])),
+            'key' => sanitize_text_field(wp_unslash($_POST['api_key'])),
             'secret' => $encrypted_secret,
-            'prompt' => sanitize_textarea_field($_POST['store_prompt'])
+            'prompt' => sanitize_textarea_field(wp_unslash($_POST['store_prompt']))
         ];
         
         update_option('ql_trendyol_stores', $stores);
@@ -1631,7 +1672,7 @@ class QualityLife_Admin_Pages {
         $table = $wpdb->prefix . 'ql_product_knowledge';
         $wpdb->query($wpdb->prepare(
             "INSERT INTO {$table} (barcode, product_info) VALUES (%s, %s) ON DUPLICATE KEY UPDATE product_info = VALUES(product_info)",
-            sanitize_text_field($_POST['barcode']), sanitize_textarea_field($_POST['product_info'])
+            sanitize_text_field(wp_unslash($_POST['barcode'])), sanitize_textarea_field(wp_unslash($_POST['product_info']))
         ));
         wp_redirect(admin_url('admin.php?page=ql-ai-settings&updated=1')); exit;
     }
@@ -1643,7 +1684,7 @@ class QualityLife_Admin_Pages {
         
         // Sadece ilgili mağazanın 'prompt' (Dil) verisini güncelliyoruz, şifrelere dokunmuyoruz!
         if(isset($stores[$store_id])) {
-            $stores[$store_id]['prompt'] = sanitize_textarea_field($_POST['store_prompt']);
+            $stores[$store_id]['prompt'] = sanitize_textarea_field(wp_unslash($_POST['store_prompt']));
             update_option('ql_trendyol_stores', $stores);
         }
         
@@ -1657,7 +1698,7 @@ class QualityLife_Admin_Pages {
         
         $id = intval($_POST['k_id']);
         $barcode = sanitize_text_field($_POST['k_barcode']);
-        $info = sanitize_textarea_field($_POST['k_info']);
+        $info = sanitize_textarea_field(wp_unslash($_POST['k_info']));
         
        if($id > 0 && !empty($barcode) && !empty($info)) {
             $wpdb->update(
@@ -1700,6 +1741,7 @@ class QualityLife_Admin_Pages {
         $cost_week = $wpdb->get_var("SELECT SUM(cost_usd) FROM $table_logs WHERE YEARWEEK(created_date, 1) = YEARWEEK('$today', 1)") ?: 0;
         $cost_month = $wpdb->get_var("SELECT SUM(cost_usd) FROM $table_logs WHERE MONTH(created_date) = MONTH('$today') AND YEAR(created_date) = YEAR('$today')") ?: 0;
         $cost_total = $wpdb->get_var("SELECT SUM(cost_usd) FROM $table_logs") ?: 0;
+        $usd_rate = (float) get_option('ql_usd_exchange_rate', '35');
 
         // Sayfalama Listesi
         $page = isset($_GET['paged']) ? max(1, intval($_GET['paged'])) : 1;
@@ -1718,21 +1760,47 @@ class QualityLife_Admin_Pages {
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px;">
                 <div style="background:#fff; padding:20px; border-radius:12px; border:1px solid #e2e8f0; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05); text-align:center;">
                     <div style="font-size:13px; color:#64748b; font-weight:600; text-transform:uppercase;">Bugün</div>
-                    <div style="font-size:28px; font-weight:800; color:#10b981; margin-top:5px;">$<?php echo number_format($cost_today, 4); ?></div>
+                    <div style="font-size:28px; font-weight:800; color:#10b981; margin-top:5px; position:relative; display:inline-block;">
+                        $<?php echo number_format($cost_today, 4); ?>
+                        <span style="position:absolute; top:-12px; right:-60px; font-size:11px; background:#dcfce7; color:#166534; padding:2px 6px; border-radius:10px; border:1px solid #bbf7d0;">₺<?php echo number_format($cost_today * $usd_rate, 2); ?></span>
+                    </div>
                 </div>
                 <div style="background:#fff; padding:20px; border-radius:12px; border:1px solid #e2e8f0; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05); text-align:center;">
                     <div style="font-size:13px; color:#64748b; font-weight:600; text-transform:uppercase;">Bu Hafta</div>
-                    <div style="font-size:28px; font-weight:800; color:#3b82f6; margin-top:5px;">$<?php echo number_format($cost_week, 4); ?></div>
+                    <div style="font-size:28px; font-weight:800; color:#3b82f6; margin-top:5px; position:relative; display:inline-block;">
+                        $<?php echo number_format($cost_week, 4); ?>
+                        <span style="position:absolute; top:-12px; right:-60px; font-size:11px; background:#dbeafe; color:#1e40af; padding:2px 6px; border-radius:10px; border:1px solid #bfdbfe;">₺<?php echo number_format($cost_week * $usd_rate, 2); ?></span>
+                    </div>
                 </div>
                 <div style="background:#fff; padding:20px; border-radius:12px; border:1px solid #e2e8f0; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05); text-align:center;">
                     <div style="font-size:13px; color:#64748b; font-weight:600; text-transform:uppercase;">Bu Ay</div>
-                    <div style="font-size:28px; font-weight:800; color:#8b5cf6; margin-top:5px;">$<?php echo number_format($cost_month, 4); ?></div>
+                    <div style="font-size:28px; font-weight:800; color:#8b5cf6; margin-top:5px; position:relative; display:inline-block;">
+                        $<?php echo number_format($cost_month, 4); ?>
+                        <span style="position:absolute; top:-12px; right:-60px; font-size:11px; background:#ede9fe; color:#5b21b6; padding:2px 6px; border-radius:10px; border:1px solid #ddd6fe;">₺<?php echo number_format($cost_month * $usd_rate, 2); ?></span>
+                    </div>
                 </div>
                 <div style="background:linear-gradient(135deg, #0f172a, #1e293b); padding:20px; border-radius:12px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.2); text-align:center; color:#fff;">
                     <div style="font-size:13px; color:#94a3b8; font-weight:600; text-transform:uppercase;">Genel Toplam</div>
-                    <div style="font-size:28px; font-weight:800; margin-top:5px;">$<?php echo number_format($cost_total, 4); ?></div>
+                    <div style="font-size:28px; font-weight:800; margin-top:5px; position:relative; display:inline-block;">
+                        $<?php echo number_format($cost_total, 4); ?>
+                        <span style="position:absolute; top:-12px; right:-60px; font-size:11px; background:rgba(255,255,255,0.1); color:#fff; padding:2px 6px; border-radius:10px; border:1px solid rgba(255,255,255,0.2);">₺<?php echo number_format($cost_total * $usd_rate, 2); ?></span>
+                    </div>
                 </div>
             </div>
+
+            <?php if ($total_items > 0): ?>
+            <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:12px; padding:16px 20px; margin-bottom:20px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+                <div>
+                    <strong style="color:#0369a1; font-size:14px;">ℹ️ Fiyatları Güncelle</strong>
+                    <div style="color:#0c4a6e; font-size:13px; margin-top:4px;">
+                        Veritabanınızdaki <?php echo number_format($total_items); ?> kaydın tutarlarını güncel Gemini 2.5 Flash fiyatlarıyla ($0.30 Giriş / $2.50 Çıkış) yeniden hesaplayabilirsiniz.
+                    </div>
+                </div>
+                <button id="btn-recalculate" style="background:#0ea5e9; color:#fff; border:none; padding:10px 20px; border-radius:8px; font-weight:700; font-size:13px; cursor:pointer; white-space:nowrap; transition:0.2s;">
+                    🔄 Geçmişi Yeniden Hesapla
+                </button>
+            </div>
+            <?php endif; ?>
 
             <div style="background:#fff; border-radius:12px; border:1px solid #e2e8f0; overflow:hidden; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
                 <div style="padding:15px 20px; background:#f8fafc; border-bottom:1px solid #e2e8f0; font-weight:700; color:#1e293b;">📊 Detaylı İşlem Geçmişi</div>
@@ -1756,7 +1824,10 @@ class QualityLife_Admin_Pages {
                                 <td><span style="background:#eef2ff; color:#4f46e5; padding:4px 8px; border-radius:6px; font-size:12px; font-weight:600;"><?php echo esc_html($l->action_type); ?></span></td>
                                 <td><?php echo number_format($l->tokens_in); ?></td>
                                 <td><?php echo number_format($l->tokens_out); ?></td>
-                                <td style="color:#ef4444; font-weight:600;">$<?php echo number_format($l->cost_usd, 6); ?></td>
+                                <td style="color:#ef4444; font-weight:600;">
+                                    $<?php echo number_format($l->cost_usd, 6); ?>
+                                    <span style="font-size:10px; color:#94a3b8; margin-left:4px;">(₺<?php echo number_format($l->cost_usd * $usd_rate, 4); ?>)</span>
+                                </td>
                             </tr>
                             <?php endforeach; ?>
                         <?php endif; ?>
@@ -1775,61 +1846,145 @@ class QualityLife_Admin_Pages {
                 <?php endif; ?>
             </div>
         </div>
+        <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const btn = document.getElementById('btn-recalculate');
+            if (!btn) return;
+
+            btn.addEventListener('click', async function() {
+                if (!confirm('⚠️ Geçmişteki TÜM maliyet kayıtları yeni Gemini 2.5 Flash fiyatlarıyla ($0.30 giriş / $2.50 çıkış) yeniden hesaplanacak.\n\nBu işlem geri alınamaz. Devam etmek istiyor musunuz?')) return;
+
+                btn.disabled = true;
+                btn.innerHTML = '⏳ Hesaplanıyor...';
+
+                try {
+                    const fd = new FormData();
+                    fd.append('action', 'ql_recalculate_costs');
+                    fd.append('security', '<?php echo wp_create_nonce("ql_ajax_nonce"); ?>');
+
+                    const res = await fetch(ajaxurl, { method: 'POST', body: fd });
+                    const data = await res.json();
+
+                    if (data.success) {
+                        btn.innerHTML = '✅ ' + data.data.message;
+                        btn.style.background = '#15803d';
+                        // 2 saniye bekle, sayfayı yenile
+                        setTimeout(() => location.reload(), 2000);
+                    } else {
+                        btn.innerHTML = '❌ Hata oluştu';
+                        btn.disabled = false;
+                    }
+                } catch(e) {
+                    btn.innerHTML = '❌ Bağlantı hatası';
+                    btn.disabled = false;
+                }
+            });
+        });
+        </script>
         <?php
     }
     // --- YENİ VE GELİŞMİŞ: ANA GÖSTERGE PANELİ (DASHBOARD) ---
     public function page_dashboard() {
         global $wpdb;
         $table_qs = $wpdb->prefix . 'ql_all_questions';
+        $table_logs = $wpdb->prefix . 'ql_api_logs';
+        $table_knowledge = $wpdb->prefix . 'ql_product_knowledge';
+        $table_errors = $wpdb->prefix . 'ql_error_logs';
         
-        // 1. Temel İstatistikler ve Tasarruf (Zaman)
-        // YENİ: Sadece YZ'nin başarıyla çözüp hafızaya aldığı soruları hesaba katar
-        $total_answered = (int) $wpdb->get_var("SELECT COUNT(id) FROM $table_qs WHERE status = 'ANSWERED' AND is_golden = 1 AND question_text != 'OTOMATIK SENKRONIZASYON'");
-        $time_saved_minutes = $total_answered * 2;
-        $time_saved_hours = floor($time_saved_minutes / 60);
-        $time_saved_mins_rem = $time_saved_minutes % 60;
-        $time_str = $time_saved_hours > 0 ? "{$time_saved_hours}s {$time_saved_mins_rem}d" : "{$time_saved_minutes} Dk";
+        $usd_exchange_rate = floatval(get_option('ql_usd_exchange_rate', 35));
 
-        // 2. ROI (Yatırım Getirisi) ve Maliyet Hesaplaması
-        // Ortalama bir insan personelin 1 soruyu yanıtlama maliyeti (Zaman/Maaş) ortalama 8 TL
-        // Gemini API'nin 1 soru için tahmini maliyeti (Token) ortalama 0.05 TL (5 Kuruş)
-        $human_cost = $total_answered * 8;
-        $api_cost = $total_answered * 0.05;
-        $net_savings = $human_cost - $api_cost;
-
-        // 3. Anlık İş Yükü (Kuyruk Radarı)
-        $pending_count = (int) $wpdb->get_var("SELECT COUNT(id) FROM $table_qs WHERE status = 'PENDING'");
-
-       // 4. Son 7 Günün Performans Verisi (Grafik İçin)
-        $chart_labels = [];
-        $chart_data = [];
-        for ($i = 6; $i >= 0; $i--) {
-            $date = date('Y-m-d', strtotime("-$i days"));
-            $chart_labels[] = date('d M', strtotime($date));
-            // YENİ: Grafikte sadece YZ'nin o gün çözdüğü sorular gösterilecek
-            $count = $wpdb->get_var("SELECT COUNT(id) FROM $table_qs WHERE status = 'ANSWERED' AND is_golden = 1 AND DATE(created_date) = '$date'");
-            $chart_data[] = (int) $count;
+        // --- SİSTEM SAĞLIĞI ---
+        $unread_errors = 0;
+        if ($wpdb->get_var("SHOW TABLES LIKE '$table_errors'") === $table_errors) {
+            $unread_errors = (int) $wpdb->get_var("SELECT COUNT(id) FROM $table_errors WHERE is_read = 0");
         }
 
-       // 5. Mağaza Performans Ligi
-        // YENİ: Sadece YZ'nin çözdüğü sorular baz alınarak mağazalar yarışır
-        $store_stats = $wpdb->get_results("SELECT store_id, COUNT(id) as q_count FROM $table_qs WHERE status = 'ANSWERED' AND is_golden = 1 AND question_text != 'OTOMATIK SENKRONIZASYON' GROUP BY store_id ORDER BY q_count DESC LIMIT 5");
+        // --- ÜRÜN EĞİTİM BOYUTU ---
+        $knowledge_count = (int) $wpdb->get_var("SELECT COUNT(id) FROM $table_knowledge");
+
+        // --- OTOMASYON ORANI (AI Start Date) ---
+        $ai_start_date = $wpdb->get_var("SELECT MIN(created_date) FROM $table_logs");
+        if (empty($ai_start_date)) $ai_start_date = current_time('mysql');
         
-        // YENİ: Mağaza isimlerini ID'ye göre hızlıca bulmak için bir eşleştirme tablosu oluşturuyoruz
-        $stores_raw = get_option('ql_api_credentials', []);
-        $stores_lookup = [];
-        if (is_array($stores_raw)) {
-            foreach ($stores_raw as $s) {
-                if (isset($s['id'])) {
-                    $stores_lookup[$s['id']] = $s['name'] ?? 'Adsız Mağaza';
+        $total_questions_since_start = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(id) FROM $table_qs WHERE created_date >= %s AND question_text != 'OTOMATIK SENKRONIZASYON'", $ai_start_date));
+        $total_answered_since_start = (int) $wpdb->get_var($wpdb->prepare("SELECT COUNT(id) FROM $table_qs WHERE status = 'ANSWERED' AND is_golden = 1 AND created_date >= %s AND question_text != 'OTOMATIK SENKRONIZASYON'", $ai_start_date));
+        
+        $automation_rate = $total_questions_since_start > 0 ? round(($total_answered_since_start / $total_questions_since_start) * 100, 1) : 0;
+
+        // --- PERİYODİK İSTATİSTİKLER (Bugün, Dün, Bu Hafta, Geçen Ay, Toplam) ---
+        function ql_get_period_stats($wpdb, $table_qs, $table_logs, $usd_rate, $where_date) {
+            $q = (int) $wpdb->get_var("SELECT COUNT(id) FROM $table_qs WHERE status = 'ANSWERED' AND is_golden = 1 AND question_text != 'OTOMATIK SENKRONIZASYON' AND $where_date");
+            $c_usd = floatval($wpdb->get_var("SELECT SUM(cost_usd) FROM $table_logs WHERE $where_date"));
+            return ['q' => $q, 'c' => $c_usd * $usd_rate];
+        }
+
+        $stats = [
+            'today' => ql_get_period_stats($wpdb, $table_qs, $table_logs, $usd_exchange_rate, "DATE(created_date) = CURDATE()"),
+            'yesterday' => ql_get_period_stats($wpdb, $table_qs, $table_logs, $usd_exchange_rate, "DATE(created_date) = CURDATE() - INTERVAL 1 DAY"),
+            'this_week' => ql_get_period_stats($wpdb, $table_qs, $table_logs, $usd_exchange_rate, "YEARWEEK(created_date, 1) = YEARWEEK(CURDATE(), 1)"),
+            'last_week' => ql_get_period_stats($wpdb, $table_qs, $table_logs, $usd_exchange_rate, "YEARWEEK(created_date, 1) = YEARWEEK(CURDATE() - INTERVAL 1 WEEK, 1)"),
+            'last_month' => ql_get_period_stats($wpdb, $table_qs, $table_logs, $usd_exchange_rate, "YEAR(created_date) = YEAR(CURDATE() - INTERVAL 1 MONTH) AND MONTH(created_date) = MONTH(CURDATE() - INTERVAL 1 MONTH)"),
+            'total' => ql_get_period_stats($wpdb, $table_qs, $table_logs, $usd_exchange_rate, "1=1")
+        ];
+
+        // Toplam ROI hesaplaması
+        $total_human_cost = $stats['total']['q'] * 8; // 8 TL ortalama insan maliyeti
+        $net_savings = $total_human_cost - $stats['total']['c'];
+        
+        // Ortalama Soru Maliyetini Sadece Bugünden İtibaren Hesapla
+        $stats_future = ql_get_period_stats($wpdb, $table_qs, $table_logs, $usd_exchange_rate, "DATE(created_date) >= CURDATE()");
+        $avg_cost_per_q = $stats_future['q'] > 0 ? ($stats_future['c'] / $stats_future['q']) : 0;
+
+        // Kurtarılan Mesai Hesaplaması (Soru başı tahmini 3 dakika)
+        $saved_minutes = $stats['total']['q'] * 3;
+        $time_str = "";
+        if ($saved_minutes > 0) {
+            $hours = floor($saved_minutes / 60);
+            $mins = $saved_minutes % 60;
+            if ($hours > 0) $time_str .= $hours . " Saat ";
+            if ($mins > 0) $time_str .= $mins . " Dk";
+        } else {
+            $time_str = "0 Dk";
+        }
+
+        // Anlık İş Yükü (Kuyruk Radarı)
+        $pending_count = (int) $wpdb->get_var("SELECT COUNT(id) FROM $table_qs WHERE status = 'PENDING'");
+
+       // Son 30 Günün Performans Verisi (Grafik İçin) - Optimize Edilmiş SQL
+        $chart_labels = [];
+        $chart_data_map = [];
+        for ($i = 29; $i >= 0; $i--) {
+            $date = date('Y-m-d', strtotime("-$i days"));
+            $chart_labels[] = date('d M', strtotime($date));
+            $chart_data_map[$date] = 0;
+        }
+        
+        $start_date = date('Y-m-d', strtotime("-29 days"));
+        $daily_counts = $wpdb->get_results("SELECT DATE(created_date) as d, COUNT(id) as c FROM $table_qs WHERE status = 'ANSWERED' AND is_golden = 1 AND DATE(created_date) >= '$start_date' GROUP BY DATE(created_date)");
+        
+        if ($daily_counts) {
+            foreach($daily_counts as $row) {
+                if(isset($chart_data_map[$row->d])) {
+                    $chart_data_map[$row->d] = (int) $row->c;
                 }
             }
         }
+        $chart_data = array_values($chart_data_map);
 
-        // 6. Canlı Akış (Son İşlemler)
+       // Mağaza Performans Ligi
+        $store_stats = $wpdb->get_results("SELECT store_id, COUNT(id) as q_count FROM $table_qs WHERE status = 'ANSWERED' AND is_golden = 1 AND question_text != 'OTOMATIK SENKRONIZASYON' GROUP BY store_id ORDER BY q_count DESC LIMIT 5");
+        $stores_raw = get_option('ql_trendyol_stores', []);
+        $stores_lookup = [];
+        if (is_array($stores_raw)) {
+            foreach ($stores_raw as $store_id => $s) {
+                $stores_lookup[$store_id] = $s['name'] ?? 'Adsız Mağaza';
+            }
+        }
+
+        // Canlı Akış (Son İşlemler)
         $recent_activities = $wpdb->get_results("SELECT product_name, status, is_golden, created_date FROM $table_qs ORDER BY created_date DESC LIMIT 6");
 
-        // 7. En Çok Soru Sorulan Ürünler
+        // En Çok Soru Sorulan Ürünler
         $top_products = $wpdb->get_results("SELECT product_name, model_code, COUNT(id) as q_count FROM $table_qs WHERE product_name IS NOT NULL AND status != 'SYNCED' AND question_text != 'OTOMATIK SENKRONIZASYON' GROUP BY model_code ORDER BY q_count DESC LIMIT 5");
 
        // Uzman Dokunuşu: defer ile asenkron yükleyerek admin sayfa açılış hızını koru.
@@ -1840,96 +1995,202 @@ class QualityLife_Admin_Pages {
         }, 10, 2);
         ?>
         <style>
-            .ql-dash-wrap { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 1200px; margin: 20px auto; color: #1e293b; padding: 0 15px; box-sizing: border-box; }
-            .ql-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 25px; }
-            .ql-card { background: #fff; padding: 25px; border-radius: 16px; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
-            .ql-card.primary { background: linear-gradient(135deg, #4f46e5, #3b82f6); color: #fff; border: none; box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.3); }
-            .ql-card-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #64748b; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; }
-            .ql-card.primary .ql-card-title { color: rgba(255,255,255,0.8); }
-            .ql-card-value { font-size: 32px; font-weight: 800; }
+            .ql-dash-wrap { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif; max-width: 1280px; margin: 20px auto; color: #334155; box-sizing: border-box; }
+            .ql-dash-wrap * { box-sizing: border-box; }
             
-            .ql-radar-bar { background: <?php echo $pending_count > 0 ? '#fff1f2' : '#f0fdf4'; ?>; border: 1px solid <?php echo $pending_count > 0 ? '#fecdd3' : '#bbf7d0'; ?>; color: <?php echo $pending_count > 0 ? '#be123c' : '#166534'; ?>; padding: 15px 20px; border-radius: 12px; font-weight: 600; display: flex; align-items: center; gap: 10px; margin-bottom: 25px; font-size: 15px; }
+            /* Typography & Colors */
+            .ql-text-sub { color: #64748b; font-size: 13px; }
+            .ql-text-bold { font-weight: 700; color: #0f172a; }
             
-            .ql-table-wrap { overflow-x: auto; }
-            .ql-table { width: 100%; border-collapse: collapse; min-width: 400px; }
-            .ql-table th, .ql-table td { padding: 15px; text-align: left; border-bottom: 1px solid #e2e8f0; font-size: 14px; }
-            .ql-table th { font-weight: 600; color: #64748b; background: #f8fafc; }
+            /* Grids */
+            .ql-grid { display: grid; gap: 20px; margin-bottom: 20px; }
+            .ql-grid-1 { grid-template-columns: 1fr; }
+            .ql-grid-2 { grid-template-columns: repeat(2, 1fr); }
+            .ql-grid-3 { grid-template-columns: repeat(3, 1fr); }
+            .ql-grid-2-1 { grid-template-columns: 2fr 1fr; }
             
-            .ql-activity-item { display: flex; gap: 15px; padding: 12px 0; border-bottom: 1px dashed #e2e8f0; align-items: flex-start; }
-            .ql-activity-item:last-child { border-bottom: none; }
-            .ql-activity-icon { background: #f1f5f9; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+            /* Cards */
+            .ql-card { background: #ffffff; padding: 24px; border-radius: 20px; border: 1px solid #f1f5f9; box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.03); transition: transform 0.2s ease, box-shadow 0.2s ease; }
+            .ql-card:hover { box-shadow: 0 8px 24px -4px rgba(15, 23, 42, 0.06); }
+            .ql-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+            .ql-card-title { font-size: 14px; font-weight: 600; color: #475569; display: flex; align-items: center; gap: 8px; }
             
-            @media (max-width: 768px) {
-                .ql-card { padding: 20px; }
-                .ql-card-value { font-size: 26px; }
-                .ql-grid { grid-template-columns: 1fr; }
+            /* Premium Dark Card */
+            .ql-card-premium { background: #0f172a; color: #f8fafc; border: none; box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.3); }
+            .ql-card-premium .ql-card-title { color: #94a3b8; }
+            
+            /* Stat Widgets */
+            .ql-stat-value { font-size: 36px; font-weight: 800; letter-spacing: -1px; line-height: 1.2; }
+            
+            /* Time Grid inside Premium Card */
+            .ql-time-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 20px; }
+            .ql-time-box { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); padding: 16px; border-radius: 16px; text-align: center; backdrop-filter: blur(10px); }
+            .ql-time-box .val { font-size: 20px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+            .ql-time-box .lbl { font-size: 11px; font-weight: 500; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+            .ql-time-box .cost { font-size: 11px; color: #fca5a5; margin-top: 4px; font-weight: 600; }
+            
+            /* Alerts & Bars */
+            .ql-alert-bar { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; border-radius: 16px; margin-bottom: 20px; font-size: 14px; font-weight: 500; }
+            .ql-alert-health-ok { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+            .ql-alert-health-err { background: #fef2f2; border: 1px solid #fecdd3; color: #991b1b; }
+            .ql-alert-radar { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e3a8a; }
+            
+            /* Tables */
+            .ql-table-card { padding: 0; overflow: hidden; }
+            .ql-table-header { padding: 20px 24px; border-bottom: 1px solid #f1f5f9; background: #fafaf9; }
+            .ql-table { width: 100%; border-collapse: collapse; }
+            .ql-table th { padding: 12px 24px; text-align: left; font-size: 12px; font-weight: 600; color: #64748b; border-bottom: 1px solid #f1f5f9; text-transform: uppercase; letter-spacing: 0.5px; }
+            .ql-table td { padding: 16px 24px; font-size: 14px; border-bottom: 1px solid #f8fafc; color: #334155; }
+            .ql-table tr:last-child td { border-bottom: none; }
+            
+            /* Timeline / Live Stream */
+            .ql-timeline { padding: 0 10px; }
+            .ql-timeline-item { display: flex; gap: 16px; margin-bottom: 20px; position: relative; }
+            .ql-timeline-item:last-child { margin-bottom: 0; }
+            .ql-timeline-icon { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; background: #f1f5f9; z-index: 2; flex-shrink: 0; }
+            .ql-timeline-content { padding-top: 8px; }
+            .ql-timeline-title { font-size: 14px; font-weight: 600; color: #1e293b; line-height: 1.4; }
+            .ql-timeline-time { font-size: 12px; color: #64748b; margin-top: 4px; }
+            
+            /* Responsive */
+            @media (max-width: 992px) {
+                .ql-grid-3, .ql-grid-2-1 { grid-template-columns: 1fr !important; }
+                .ql-time-grid { grid-template-columns: repeat(2, 1fr); }
+            }
+            @media (max-width: 600px) {
+                .ql-alert-bar { flex-direction: column; gap: 12px; align-items: flex-start; }
+                .ql-card { padding: 16px; }
+                .ql-grid-2 { grid-template-columns: 1fr !important; }
             }
         </style>
 
         <div class="ql-dash-wrap">
-            <h1 style="margin-bottom: 20px; font-weight: 800; font-size: 26px; display:flex; align-items:center; gap:10px;">
+            <h1 style="margin-bottom: 24px; font-weight: 800; font-size: 28px; display:flex; align-items:center; gap:12px; color: #0f172a; letter-spacing: -0.5px;">
                 🚀 YZ Komuta Merkezi
             </h1>
 
-            <div class="ql-radar-bar">
-                <?php if($pending_count > 0): ?>
+            <!-- Sağlık Bildirimi -->
+            <?php if($unread_errors > 0): ?>
+            <div class="ql-alert-bar ql-alert-health-err">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="font-size:20px;">🚨</span>
+                    <span><strong>Sistem Uyarısı:</strong> Okunmamış <?php echo $unread_errors; ?> arka plan hatası var. Operasyonel verimlilik için logları inceleyin.</span>
+                </div>
+                <a href="?page=ql-ai-error-logs" style="background:#fff; border:1px solid #fca5a5; padding:8px 16px; border-radius:10px; color:#b91c1c; text-decoration:none; font-weight:600; font-size: 13px;">Logları İncele &rarr;</a>
+            </div>
+            <?php endif; ?>
+
+            <!-- Radar Bildirimi -->
+            <?php if($pending_count > 0): ?>
+            <div class="ql-alert-bar ql-alert-radar">
+                <div style="display: flex; align-items: center; gap: 10px;">
                     <span style="font-size: 20px; animation: pulse 2s infinite;">🔴</span> 
-                    Şu an kuyrukta bekleyen <?php echo $pending_count; ?> soru var. YZ bunları tahmini <?php echo ($pending_count * 3); ?> saniyede eritebilir.
-                <?php else: ?>
-                    <span style="font-size: 20px;">🟢</span> 
-                    Tüm kuyruk temiz! Yeni soru yok, yapay zeka dinleniyor.
-                <?php endif; ?>
+                    <span>Şu an kuyrukta <strong><?php echo $pending_count; ?> yeni soru</strong> bekliyor. YZ tahmini <?php echo ($pending_count * 3); ?> saniye içinde hepsini eritecek.</span>
+                </div>
+            </div>
+            <?php endif; ?>
+
+            <!-- Ana İstatistik Izgarası -->
+            <div class="ql-grid ql-grid-3">
+                <!-- Dev Kutu: Başarı Oranı ve Tasarruf -->
+                <div class="ql-card ql-card-premium" style="grid-column: 1 / -1;">
+                    <div class="ql-card-header" style="margin-bottom: 24px;">
+                        <div class="ql-card-title">✨ Otomasyon Başarısı & Yatırım Getirisi (ROI)</div>
+                        <div style="text-align: right;">
+                            <div class="ql-text-sub" style="color: #64748b;">Net Tasarruf</div>
+                            <div style="font-size: 24px; font-weight: 800; color: #10b981;">₺<?php echo number_format($net_savings, 2, ',', '.'); ?></div>
+                        </div>
+                    </div>
+                    
+                    <div style="display: flex; align-items: flex-end; gap: 16px;">
+                        <div class="ql-stat-value">%<?php echo $automation_rate; ?></div>
+                        <div class="ql-text-sub" style="color: #94a3b8; padding-bottom: 6px;">YZ'nin kusursuz çözdüğü soru oranı</div>
+                    </div>
+                    
+                    <!-- Zaman Kırılımı Grid'i -->
+                    <div class="ql-time-grid">
+                        <div class="ql-time-box">
+                            <div class="val"><?php echo number_format($stats['today']['q'], 0, '', '.'); ?></div>
+                            <div class="lbl">Bugün</div>
+                            <div class="cost">₺<?php echo number_format($stats['today']['c'], 2, ',', '.'); ?></div>
+                        </div>
+                        <div class="ql-time-box">
+                            <div class="val"><?php echo number_format($stats['yesterday']['q'], 0, '', '.'); ?></div>
+                            <div class="lbl">Dün</div>
+                            <div class="cost">₺<?php echo number_format($stats['yesterday']['c'], 2, ',', '.'); ?></div>
+                        </div>
+                        <div class="ql-time-box">
+                            <div class="val"><?php echo number_format($stats['this_week']['q'], 0, '', '.'); ?></div>
+                            <div class="lbl">Bu Hafta</div>
+                            <div class="cost">₺<?php echo number_format($stats['this_week']['c'], 2, ',', '.'); ?></div>
+                        </div>
+                        <div class="ql-time-box">
+                            <div class="val"><?php echo number_format($stats['last_week']['q'], 0, '', '.'); ?></div>
+                            <div class="lbl">Geç. Hafta</div>
+                            <div class="cost">₺<?php echo number_format($stats['last_week']['c'], 2, ',', '.'); ?></div>
+                        </div>
+                        <div class="ql-time-box">
+                            <div class="val"><?php echo number_format($stats['last_month']['q'], 0, '', '.'); ?></div>
+                            <div class="lbl">Geçen Ay</div>
+                            <div class="cost">₺<?php echo number_format($stats['last_month']['c'], 2, ',', '.'); ?></div>
+                        </div>
+                        <div class="ql-time-box">
+                            <div class="val"><?php echo number_format($stats['total']['q'], 0, '', '.'); ?></div>
+                            <div class="lbl">Tüm Zamanlar</div>
+                            <div class="cost">₺<?php echo number_format($stats['total']['c'], 2, ',', '.'); ?></div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <div class="ql-grid">
-                <div class="ql-card primary">
-                    <div class="ql-card-title">💰 Net Tasarruf (ROI)</div>
-                    <div class="ql-card-value">₺<?php echo number_format($net_savings, 2, ',', '.'); ?></div>
-                    <div style="font-size: 13px; opacity: 0.9; margin-top: 10px; line-height: 1.4;">Personel Maliyeti: ₺<?php echo number_format($human_cost, 0); ?> <br> API Maliyeti: Sadece ₺<?php echo number_format($api_cost, 2, ',', '.'); ?></div>
+            <!-- İkincil İstatistikler -->
+            <div class="ql-grid ql-grid-3">
+                <div class="ql-card">
+                    <div class="ql-card-title">🧠 Öğrenilmiş Ürün Sayısı</div>
+                    <div style="margin-top: 16px;" class="ql-stat-value"><?php echo number_format($knowledge_count, 0, '', '.'); ?></div>
+                    <div class="ql-text-sub" style="margin-top: 8px;">Sisteme özel kural öğretilen toplam ürün sayısı. YZ arşivi ne kadar büyükse hata o kadar sıfıra yaklaşır.</div>
                 </div>
 
                 <div class="ql-card">
-                    <div class="ql-card-title">⏳ Kurtarılan Mesai</div>
-                    <div class="ql-card-value" style="color: #0f172a;"><?php echo $time_str; ?></div>
-                    <div style="font-size: 13px; color: #64748b; margin-top: 10px;">Müşteri hizmetlerine harcanmayan toplam süre.</div>
+                    <div class="ql-card-title">💸 Ort. Soru Maliyeti</div>
+                    <div style="margin-top: 16px;" class="ql-stat-value">₺<?php echo number_format($avg_cost_per_q, 4, ',', '.'); ?></div>
+                    <div class="ql-text-sub" style="margin-top: 8px;">API tarafından ücretlendirilen soruların ortalama birim harcaması.</div>
                 </div>
 
                 <div class="ql-card">
-                    <div class="ql-card-title">⭐ Altın Hafıza</div>
-                    <div class="ql-card-value" style="color: #f59e0b;"><?php echo number_format((int)$wpdb->get_var("SELECT COUNT(id) FROM $table_qs WHERE is_golden = 1")); ?></div>
-                    <div style="font-size: 13px; color: #64748b; margin-top: 10px;">YZ'nin kusursuz öğrenme sağladığı altın kural sayısı.</div>
+                    <div class="ql-card-title">⏳ Kurtarılan Toplam Mesai</div>
+                    <div style="margin-top: 16px;" class="ql-stat-value"><?php echo $time_str; ?></div>
+                    <div class="ql-text-sub" style="margin-top: 8px;">Müşteri hizmetlerinin cevaplamak için harcayacağı tahmini toplam süre cebinize kaldı.</div>
                 </div>
             </div>
 
-            <div class="ql-grid" style="grid-template-columns: 2fr 1fr;">
-                <div class="ql-card" style="padding: 20px;">
-                    <h3 style="margin-top:0; font-size:16px; color:#1e293b;">📈 Son 7 Günlük Yanıt Performansı</h3>
-                    <div style="position: relative; height: 300px; width: 100%;">
+            <!-- Grafik ve Canlı Akış -->
+            <div class="ql-grid ql-grid-2-1">
+                <div class="ql-card">
+                    <div class="ql-card-title" style="margin-bottom: 24px;">📈 Son 30 Günlük YZ Çözüm Grafiği</div>
+                    <div style="position: relative; height: 320px; width: 100%;">
                         <canvas id="qlPerformanceChart"></canvas>
                     </div>
                 </div>
 
-                <div class="ql-card" style="padding: 20px;">
-                    <h3 style="margin-top:0; font-size:16px; color:#1e293b;">⚡ Canlı Akış</h3>
-                    <div style="margin-top: 15px;">
+                <div class="ql-card">
+                    <div class="ql-card-title" style="margin-bottom: 24px;">⚡ Canlı Sistem Akışı</div>
+                    <div class="ql-timeline">
                         <?php if(empty($recent_activities)): ?>
-                            <p style="color:#64748b; font-size:13px;">Henüz işlem yok.</p>
+                            <div class="ql-text-sub" style="text-align:center; padding: 40px 0;">Henüz işlem kaydı yok.</div>
                         <?php else: ?>
                             <?php foreach($recent_activities as $act): 
-                                $icon = '💬'; $text = 'soru yanıtlandı.';
-                                if($act->status == 'SYNCED') { $icon = '📦'; $text = 'hafızaya çekildi.'; }
-                                if($act->is_golden == 1) { $icon = '⭐'; $text = 'altın kural oldu.'; }
+                                $icon = '💬'; $text = 'soru yanıtlandı.'; $bg = '#eff6ff';
+                                if($act->status == 'SYNCED') { $icon = '📦'; $text = 'hafızaya eklendi.'; $bg = '#f8fafc'; }
+                                if($act->is_golden == 1) { $icon = '⭐'; $text = 'altın kural yapıldı.'; $bg = '#fef3c7'; }
                                 
-                                // Zaman hesaplama
                                 $time_diff = human_time_diff(strtotime($act->created_date), current_time('timestamp'));
                             ?>
-                            <div class="ql-activity-item">
-                                <div class="ql-activity-icon"><?php echo $icon; ?></div>
-                                <div>
-                                    <div style="font-size: 13px; font-weight: 600; color:#334155; line-height:1.4;">
-                                        <?php echo wp_trim_words($act->product_name, 5, '...'); ?>
-                                    </div>
-                                    <div style="font-size: 12px; color:#64748b; margin-top:2px;"><?php echo $time_diff; ?> önce <?php echo $text; ?></div>
+                            <div class="ql-timeline-item">
+                                <div class="ql-timeline-icon" style="background: <?php echo $bg; ?>;"><?php echo $icon; ?></div>
+                                <div class="ql-timeline-content">
+                                    <div class="ql-timeline-title"><?php echo wp_trim_words($act->product_name, 5, '...'); ?></div>
+                                    <div class="ql-timeline-time"><?php echo $time_diff; ?> önce <?php echo $text; ?></div>
                                 </div>
                             </div>
                             <?php endforeach; ?>
@@ -1938,21 +2199,24 @@ class QualityLife_Admin_Pages {
                 </div>
             </div>
 
-            <div class="ql-grid">
-                <div class="ql-card" style="padding:0; overflow:hidden;">
-                    <div style="padding: 20px; background: #f8fafc; border-bottom: 1px solid #e2e8f0;">
-                        <h3 style="margin:0; font-size:15px; color:#1e293b;">🏪 Mağaza Performans Ligi</h3>
+            <!-- Tablolar (Mağaza ve Ürünler) -->
+            <div class="ql-grid ql-grid-2">
+                <div class="ql-card ql-table-card">
+                    <div class="ql-table-header">
+                        <div class="ql-card-title">🏪 Mağaza Performans Ligi</div>
                     </div>
-                    <div class="ql-table-wrap">
+                    <div style="overflow-x: auto;">
                         <table class="ql-table">
-                            <thead><tr><th>Mağaza</th><th style="text-align:right;">Çözülen Soru</th></tr></thead>
+                            <thead><tr><th>Mağaza Adı</th><th style="text-align:right;">Çözülen Soru</th></tr></thead>
                             <tbody>
                                 <?php foreach($store_stats as $ss): 
                                     $s_name = isset($stores_lookup[$ss->store_id]) ? $stores_lookup[$ss->store_id] : 'Bilinmeyen Mağaza';
                                 ?>
                                 <tr>
-                                    <td style="font-weight:600;"><?php echo esc_html($s_name); ?></td>
-                                    <td style="text-align:right;"><span style="background:#e0f2fe; color:#0369a1; padding:4px 10px; border-radius:12px; font-size:12px; font-weight:700;"><?php echo $ss->q_count; ?> Soru</span></td>
+                                    <td class="ql-text-bold"><?php echo esc_html($s_name); ?></td>
+                                    <td style="text-align:right;">
+                                        <span style="background:#f1f5f9; color:#334155; padding:6px 12px; border-radius:20px; font-size:12px; font-weight:700; border:1px solid #e2e8f0;"><?php echo $ss->q_count; ?> Adet</span>
+                                    </td>
                                 </tr>
                                 <?php endforeach; ?>
                             </tbody>
@@ -1960,19 +2224,22 @@ class QualityLife_Admin_Pages {
                     </div>
                 </div>
 
-                <div class="ql-card" style="padding:0; overflow:hidden;">
-                    <div style="padding: 20px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
-                        <h3 style="margin:0; font-size:15px; color:#1e293b;">🔥 En Çok Sorulan Ürünler</h3>
-                        <span style="font-size:11px; background:#fee2e2; color:#be123c; padding:3px 8px; border-radius:6px;">Açıklamaları Güncelleyin</span>
+                <div class="ql-card ql-table-card">
+                    <div class="ql-table-header" style="display:flex; justify-content:space-between; align-items:center;">
+                        <div class="ql-card-title">🔥 En Çok Sorulan Ürünler</div>
+                        <span style="font-size:10px; background:#fef2f2; color:#ef4444; padding:4px 8px; border-radius:8px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; border:1px solid #fca5a5;">Kuralları Kontrol Et</span>
                     </div>
-                    <div class="ql-table-wrap">
+                    <div style="overflow-x: auto;">
                         <table class="ql-table">
-                            <thead><tr><th>Ürün Adı</th><th style="text-align:right;">Soru</th></tr></thead>
+                            <thead><tr><th>Ürün Adı & Model</th><th style="text-align:right;">Soru Yükü</th></tr></thead>
                             <tbody>
                                 <?php foreach($top_products as $tp): ?>
                                 <tr>
-                                    <td style="font-size:13px;"><?php echo wp_trim_words($tp->product_name, 6, '...'); ?> <div style="color:#94a3b8; font-size:11px; margin-top:3px;"><?php echo esc_html($tp->model_code); ?></div></td>
-                                    <td style="text-align:right; font-weight:600; color:#b91c1c;"><?php echo $tp->q_count; ?></td>
+                                    <td>
+                                        <div class="ql-text-bold"><?php echo wp_trim_words($tp->product_name, 5, '...'); ?></div>
+                                        <div class="ql-text-sub" style="font-size:11px; margin-top:4px;"><?php echo esc_html($tp->model_code); ?></div>
+                                    </td>
+                                    <td style="text-align:right; font-weight:700; color:#ef4444; font-size: 16px;"><?php echo $tp->q_count; ?></td>
                                 </tr>
                                 <?php endforeach; ?>
                             </tbody>
@@ -2015,7 +2282,14 @@ class QualityLife_Admin_Pages {
                             },
                             scales: {
                                 y: { beginAtZero: true, ticks: { stepSize: 1 } },
-                                x: { grid: { display: false } }
+                                x: { 
+                                    grid: { display: false },
+                                    ticks: { 
+                                        maxRotation: 45,
+                                        minRotation: 0,
+                                        maxTicksLimit: window.innerWidth < 768 ? 6 : 15 
+                                    }
+                                }
                             }
                         }
                     });
@@ -2369,6 +2643,84 @@ class QualityLife_Admin_Pages {
                 
             });
         </script>
+        <?php
+    }
+
+    // --- YENİ: HATA LOGLARI SAYFASI ---
+    public function page_error_logs() {
+        global $wpdb;
+        $table_errors = $wpdb->prefix . 'ql_error_logs';
+        
+        // Tablo kurulu mu kontrolü
+        if($wpdb->get_var("SHOW TABLES LIKE '$table_errors'") != $table_errors) {
+            echo '<div class="wrap"><h2>Hata Tablosu Kurulmamış. Lütfen eklentiyi kapatıp açın.</h2></div>';
+            return;
+        }
+
+        // Sayfaya girildiği an okunmamış tüm hataları OKUNDU olarak işaretle
+        $wpdb->update($table_errors, ['is_read' => 1], ['is_read' => 0]);
+
+        $page = isset($_GET['paged']) ? max(1, intval($_GET['paged'])) : 1;
+        $limit = 20;
+        $offset = ($page - 1) * $limit;
+        
+        $total_items = $wpdb->get_var("SELECT COUNT(id) FROM $table_errors");
+        $total_pages = ceil($total_items / $limit);
+        $logs = $wpdb->get_results("SELECT * FROM $table_errors ORDER BY created_at DESC LIMIT $limit OFFSET $offset");
+        ?>
+        <div class="wrap" style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+            <h1 style="margin-bottom: 25px; font-weight: 700; display:flex; align-items:center; gap:10px;">
+                <span style="font-size:28px;">🚨</span> Sistem Hata Logları
+            </h1>
+            <p style="color:#64748b; margin-top:-15px; margin-bottom:25px;">Burada API bağlantıları, arka plan botları (Cron) ve Trendyol senkronizasyonunda oluşan hataları ve uyarıları görebilirsiniz.</p>
+            
+            <div style="background:#fff; border-radius:12px; border:1px solid #e2e8f0; overflow:hidden; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
+                <table class="wp-list-table widefat fixed striped" style="border:none; margin:0;">
+                    <thead>
+                        <tr>
+                            <th style="font-weight:600; width:150px;">Tarih</th>
+                            <th style="font-weight:600; width:120px;">Hata Türü</th>
+                            <th style="font-weight:600;">Hata Mesajı</th>
+                            <th style="font-weight:600; width:300px;">Detay / Yanıt Verisi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if(empty($logs)): ?>
+                            <tr><td colspan="4" style="text-align:center; padding:30px; color:#10b981; font-weight:600; font-size:16px;">Tebrikler! Hiç hata kaydı yok. Sistem kusursuz çalışıyor. 🎉</td></tr>
+                        <?php else: ?>
+                            <?php foreach($logs as $l): ?>
+                            <tr>
+                                <td><?php echo date('d.m.Y H:i:s', strtotime($l->created_at)); ?></td>
+                                <td>
+                                    <?php 
+                                        $bg = '#fee2e2'; $col = '#991b1b';
+                                        if($l->error_type == 'API_RATE_LIMIT') { $bg = '#ffedd5'; $col = '#c2410c'; }
+                                        elseif($l->error_type == 'CRON_LOOP') { $bg = '#fef08a'; $col = '#854d0e'; }
+                                    ?>
+                                    <span style="background:<?php echo $bg; ?>; color:<?php echo $col; ?>; padding:4px 8px; border-radius:6px; font-size:11px; font-weight:700;"><?php echo esc_html($l->error_type); ?></span>
+                                </td>
+                                <td style="color:#1e293b; font-weight:500; font-size:13px;"><?php echo esc_html($l->error_message); ?></td>
+                                <td>
+                                    <textarea readonly style="width:100%; height:50px; font-size:11px; font-family:monospace; background:#f8fafc; border:1px solid #e2e8f0; border-radius:4px; padding:5px; resize:vertical;"><?php echo esc_textarea($l->error_details); ?></textarea>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+                
+                <?php if($total_pages > 1): ?>
+                <div style="padding:15px; border-top:1px solid #e2e8f0; text-align:right;">
+                    <?php
+                    $page_links = paginate_links([
+                        'base' => add_query_arg('paged', '%#%'), 'format' => '', 'prev_text' => '&laquo;', 'next_text' => '&raquo;', 'total' => $total_pages, 'current' => $page
+                    ]);
+                    if ($page_links) echo "<div class='tablenav-pages' style='margin:0;'>{$page_links}</div>";
+                    ?>
+                </div>
+                <?php endif; ?>
+            </div>
+        </div>
         <?php
     }
 }
