@@ -355,30 +355,35 @@ $api_key = self::decrypt_data($encrypted_key);
     // --- GÜVENLİK (ŞİFRELEME) MOTORU ---
     
     // 1. Veriyi Şifreler (Veritabanına kaydetmeden önce)
+   // UZMAN DOKUNUŞU: Güvenli ve Kalıcı Kriptografi Motoru
+    private static function get_crypto_keys() {
+        // Eklentiye özel kalıcı bir şifreleme anahtarı oluştur veya çek
+        $keys = get_option('ql_crypto_keys');
+        if (!$keys) {
+            $keys = ['key' => wp_generate_password(64, true, true), 'iv' => wp_generate_password(16, true, true)];
+            update_option('ql_crypto_keys', $keys);
+        }
+        return $keys;
+    }
+
     public static function encrypt_data($data) {
         if (empty($data)) return $data;
-        $encrypt_method = "AES-256-CBC";
-        // wp-config.php içindeki eşsiz anahtarları kullanıyoruz
-        $secret_key = defined('AUTH_KEY') ? AUTH_KEY : 'ql_default_secure_key_123!';
-        $secret_iv = defined('SECURE_AUTH_KEY') ? SECURE_AUTH_KEY : 'ql_default_secure_iv_456!';
-        
-        $key = hash('sha256', $secret_key);
-        $iv = substr(hash('sha256', $secret_iv), 0, 16);
-        $output = openssl_encrypt($data, $encrypt_method, $key, 0, $iv);
+        $crypto = self::get_crypto_keys();
+        $key = hash('sha256', $crypto['key']);
+        $iv = substr(hash('sha256', $crypto['iv']), 0, 16);
+        $output = openssl_encrypt($data, "AES-256-CBC", $key, 0, $iv);
         return base64_encode($output);
     }
 
-    // 2. Şifreyi Çözer (API'ye istek atarken)
     public static function decrypt_data($data) {
         if (empty($data)) return $data;
-        $encrypt_method = "AES-256-CBC";
-        $secret_key = defined('AUTH_KEY') ? AUTH_KEY : 'ql_default_secure_key_123!';
-        $secret_iv = defined('SECURE_AUTH_KEY') ? SECURE_AUTH_KEY : 'ql_default_secure_iv_456!';
-        
-        $key = hash('sha256', $secret_key);
-        $iv = substr(hash('sha256', $secret_iv), 0, 16);
-        return openssl_decrypt(base64_decode($data), $encrypt_method, $key, 0, $iv);
+        $crypto = self::get_crypto_keys();
+        $key = hash('sha256', $crypto['key']);
+        $iv = substr(hash('sha256', $crypto['iv']), 0, 16);
+        return openssl_decrypt(base64_decode($data), "AES-256-CBC", $key, 0, $iv);
     }
+
+
     // --- TRENDYOL TÜM ÜRÜNLERİ ÇEKME ---
     public static function get_trendyol_products($seller_id, $api_key, $api_secret) {
         $all_items = [];

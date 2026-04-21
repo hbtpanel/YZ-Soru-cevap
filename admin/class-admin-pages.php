@@ -144,33 +144,36 @@ class QualityLife_Admin_Pages {
                 <div class="ql-grid-2">
                     
                     <div>
-                        <div class="ql-card">
-                            <h3>➕ Yeni Mağaza Ekle</h3>
-                            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+                    <div class="ql-card">
+                            <h3 id="store-form-title">➕ Yeni Mağaza Ekle</h3>
+                            <form id="store-form" method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
                                 <input type="hidden" name="action" value="ql_save_store">
                                 <?php wp_nonce_field('ql_store_nonce'); ?>
                                 
                                 <label>Mağaza Adı (Örn: QL Merkez):</label>
-                                <input type="text" name="store_name" class="ql-input" required>
+                                <input type="text" name="store_name" id="store_name_input" class="ql-input" required>
                                 
                                 <div class="ql-grid-2" style="gap: 15px;">
                                     <div>
                                         <label>Satıcı ID:</label>
-                                        <input type="text" name="seller_id" class="ql-input" required>
+                                        <input type="text" name="seller_id" id="seller_id_input" class="ql-input" required>
                                     </div>
                                     <div>
                                         <label>API Key:</label>
-                                        <input type="text" name="api_key" class="ql-input" required>
+                                        <input type="text" name="api_key" id="api_key_input" class="ql-input" required>
                                     </div>
                                 </div>
                                 
                                 <label>API Secret (Gizli & Şifrelenir):</label>
-                                <input type="password" name="api_secret" class="ql-input" required>
+                                <input type="password" name="api_secret" id="api_secret_input" class="ql-input" required placeholder="(Düzenlerken değiştirmeyecekseniz boş bırakın)">
                                 
                                 <label>Mağazanın Marka Dili ve Kuralları:</label>
-                                <textarea name="store_prompt" class="ql-textarea" rows="3" required placeholder="Örn: 'Merhabalar efendim' diye başla..."></textarea>
+                                <textarea name="store_prompt" id="store_prompt_input" class="ql-textarea" rows="3" required placeholder="Örn: 'Merhabalar efendim' diye başla..."></textarea>
                                 
-                                <button type="submit" class="ql-btn" style="width: 100%;">➕ Sisteme Ekle</button>
+                                <div style="display: flex; gap: 10px;">
+                                    <button type="submit" id="store-submit-btn" class="ql-btn" style="flex: 1;">➕ Sisteme Ekle</button>
+                                    <button type="button" id="store-cancel-btn" class="ql-btn ql-btn-secondary" style="display: none;" onclick="resetStoreForm()">Vazgeç</button>
+                                </div>
                             </form>
                         </div>
                     </div>
@@ -194,8 +197,9 @@ class QualityLife_Admin_Pages {
                                                 <strong style="display: block; font-size: 16px; color: var(--ql-text); margin-bottom: 5px;"><?php echo esc_html($s['name']); ?></strong>
                                                 <span class="ql-badge">ID: <?php echo esc_attr($id); ?></span>
                                             </div>
-                                            <div class="ql-store-actions">
+                                           <div class="ql-store-actions">
                                                 <button type="button" class="ql-btn ql-btn-secondary btn-test-store" data-id="<?php echo esc_attr($id); ?>" style="padding: 8px 12px; font-size: 13px;">🔌 Test Et</button>
+                                                <button type="button" class="ql-btn ql-btn-secondary btn-edit-store" data-id="<?php echo esc_attr($id); ?>" data-name="<?php echo esc_attr($s['name']); ?>" data-key="<?php echo esc_attr($s['key']); ?>" data-prompt="<?php echo isset($s['prompt']) ? esc_attr($s['prompt']) : ''; ?>" style="padding: 8px 12px; font-size: 13px; background: #fef3c7; border-color: #fcd34d; color: #92400e;">✏️ Düzenle</button>
                                                 <button type="button" class="ql-btn btn-open-modal" data-id="<?php echo esc_attr($id); ?>" data-name="<?php echo esc_attr($s['name']); ?>" data-prompt="<?php echo isset($s['prompt']) ? esc_attr($s['prompt']) : ''; ?>" style="padding: 8px 12px; font-size: 13px; background: var(--ql-secondary);">✍️ Marka Dili</button>
                                             </div>
                                         </div>
@@ -389,10 +393,43 @@ class QualityLife_Admin_Pages {
                     } catch (e) { 
                         alert('Ağ hatası oluştu!'); 
                     }
-                    this.innerHTML = originalText; this.disabled = false;
+                this.innerHTML = originalText; this.disabled = false;
                 });
             }
+
+            // UZMAN DOKUNUŞU: Mağaza Düzenleme Dinamiği
+            document.querySelectorAll('.btn-edit-store').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    document.getElementById('store-form-title').innerHTML = '✏️ Mağazayı Düzenle';
+                    document.getElementById('store-submit-btn').innerHTML = '💾 Değişiklikleri Kaydet';
+                    document.getElementById('store-cancel-btn').style.display = 'block';
+                    
+                    document.getElementById('store_name_input').value = this.dataset.name;
+                    document.getElementById('seller_id_input').value = this.dataset.id;
+                    document.getElementById('seller_id_input').setAttribute('readonly', 'readonly');
+                    document.getElementById('seller_id_input').style.background = '#e2e8f0';
+                    document.getElementById('api_key_input').value = this.dataset.key;
+                    document.getElementById('store_prompt_input').value = this.dataset.prompt;
+                    
+                    document.getElementById('api_secret_input').value = ''; // Güvenlik için boş gelir
+                    document.getElementById('api_secret_input').removeAttribute('required'); // Şifre zorunluluğunu kaldırır
+                    
+                    // Yukarıya forma yumuşak bir şekilde kaydır
+                    document.getElementById('store-form-title').scrollIntoView({ behavior: 'smooth', block: 'center' });
+                });
+            });
         });
+
+        // Formu eski haline "Ekleme" moduna döndürür
+        function resetStoreForm() {
+            document.getElementById('store-form').reset();
+            document.getElementById('store-form-title').innerHTML = '➕ Yeni Mağaza Ekle';
+            document.getElementById('store-submit-btn').innerHTML = '➕ Sisteme Ekle';
+            document.getElementById('store-cancel-btn').style.display = 'none';
+            document.getElementById('seller_id_input').removeAttribute('readonly');
+            document.getElementById('seller_id_input').style.background = '#fbfbfc';
+            document.getElementById('api_secret_input').setAttribute('required', 'required');
+        }
         </script>
         <?php
     }
@@ -1564,19 +1601,27 @@ class QualityLife_Admin_Pages {
         wp_redirect(admin_url('admin.php?page=ql-ai-settings&updated=1')); exit;
     }
 
-    public function save_store_settings() {
+  public function save_store_settings() {
         if(!check_admin_referer('ql_store_nonce')) return;
         $stores = get_option('ql_trendyol_stores', []);
         
-        // Trendyol API Secret'ı şifreleyerek kaydediyoruz!
-        $encrypted_secret = QualityLife_API_Services::encrypt_data(sanitize_text_field($_POST['api_secret']));
+        $seller_id = sanitize_text_field($_POST['seller_id']);
+        $secret_input = sanitize_text_field($_POST['api_secret']);
         
-        $stores[sanitize_text_field($_POST['seller_id'])] = [
+        // UZMAN DOKUNUŞU: Eğer düzenleme yapılıyorsa ve şifre kutusu boş bırakıldıysa eski şifreyi koru
+        if (empty($secret_input) && isset($stores[$seller_id])) {
+            $encrypted_secret = $stores[$seller_id]['secret'];
+        } else {
+            $encrypted_secret = QualityLife_API_Services::encrypt_data($secret_input);
+        }
+        
+        $stores[$seller_id] = [
             'name' => sanitize_text_field($_POST['store_name']),
             'key' => sanitize_text_field($_POST['api_key']),
             'secret' => $encrypted_secret,
-            'prompt' => sanitize_textarea_field($_POST['store_prompt']) // YENİ: Mağazaya özel dil
+            'prompt' => sanitize_textarea_field($_POST['store_prompt'])
         ];
+        
         update_option('ql_trendyol_stores', $stores);
         wp_redirect(admin_url('admin.php?page=ql-ai-settings&updated=1')); exit;
     }

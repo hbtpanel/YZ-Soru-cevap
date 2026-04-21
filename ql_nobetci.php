@@ -1,4 +1,10 @@
 <?php
+// UZMAN DOKUNUŞU: Güvenlik Kalkanı - Dışarıdan izinsiz tetiklemeleri engelle!
+// Sadece komut satırından (Plesk) veya doğru şifreyle çalışsın.
+if (php_sapi_name() !== 'cli' && (!isset($_GET['token']) || $_GET['token'] !== 'gizli_cron_sifreniz_99x')) {
+    die('Erişim Engellendi.');
+}
+
 // UZMAN DOKUNUŞU: WordPress çekirdeğini başlat
 $wp_root = dirname(dirname(dirname(dirname(__FILE__)))); 
 if (file_exists($wp_root . '/wp-load.php')) {

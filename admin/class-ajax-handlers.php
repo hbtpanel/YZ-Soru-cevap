@@ -292,9 +292,11 @@ class QualityLife_AJAX_Handlers {
 
        $untrained_only = isset($_POST['untrained_only']) && $_POST['untrained_only'] === 'true';
 
-        $where = "WHERE 1=1";
+       $where = "WHERE 1=1";
+        // UZMAN DOKUNUŞU: SQL Injection Kalkanı (Hazırlıklı Sorgular)
         if(!empty($search)) {
-            $where .= " AND (q.product_name LIKE '%$search%' OR q.model_code LIKE '%$search%' OR q.barcode LIKE '%$search%')";
+            $like_match = '%' . $wpdb->esc_like($search) . '%';
+            $where .= $wpdb->prepare(" AND (q.product_name LIKE %s OR q.model_code LIKE %s OR q.barcode LIKE %s)", $like_match, $like_match, $like_match);
         }
         if ($untrained_only) {
             $where .= " AND (k.product_info IS NULL OR k.product_info = '')";

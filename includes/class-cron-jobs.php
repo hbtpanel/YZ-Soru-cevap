@@ -15,10 +15,15 @@ class QualityLife_Cron_Jobs {
         $this->schedule_events();
     }
 
-    // Dışarıdan bir URL ile botu zorla uyandırma fonksiyonu
+// Dışarıdan bir URL ile botu zorla uyandırma fonksiyonu
     public function check_external_trigger() {
-        // Örn: siteniz.com/?ql_trigger=secret_key_123
         if ( isset($_GET['ql_trigger']) && $_GET['ql_trigger'] === 'ql_auto_pilot_789' ) {
+            
+            // UZMAN DOKUNUŞU: Ya admin girişi olmalı, ya da Plesk'in gizli geçit şifresi (token) doğru olmalı.
+            $plesk_token = isset($_GET['token']) ? $_GET['token'] : '';
+            if ( !current_user_can('manage_options') && $plesk_token !== 'gizli_cron_sifreniz_99x' ) {
+                die('Güvenlik Kalkanı: Yetkisiz tetikleme.');
+            }
             
             // UZMAN DOKUNUŞU: Yüzlerce soru işlenirken PHP'nin 30 saniye kuralına takılıp çökmesini (Fatal Error) engelliyoruz
             set_time_limit(0);
